@@ -1,4 +1,6 @@
 # http://localhost:5001
+# run using python ui_flask.py and then go to ^^
+# to do list @ bottom, we can add more tabs to app if we have time!
 
 from flask import Flask, render_template_string
 
