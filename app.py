@@ -1,12 +1,21 @@
+# app.py
 # http://localhost:5001
-# run using python app.py and then go to ^^
-# to do list @ bottom, we can add more tabs to app if we have time!
+# Run using: python app.py
 
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request, jsonify
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from sentence_transformers import SentenceTransformer
+import numpy as np
+import pandas as pd
+from flask import Flask, render_template_string, request, jsonify
+from chat.rag import WomensHealthRAG
+
 
 app = Flask(__name__)
 
-# HTML Template
+
+# HTML Template (keeping your existing template)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -290,6 +299,51 @@ HTML_TEMPLATE = """
             transform: scale(1.05);
         }
 
+                /* Resources section styling */
+        .resource-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .resource-item {
+            background: #fff5f8;
+            border: 2px solid #ffd6e8;
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .resource-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(255, 182, 193, 0.3);
+        }
+
+        .resource-item h4 {
+            color: #ff9dbf;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .resource-item p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .resource-item a {
+            color: #ff9dbf;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .resource-item a:hover {
+            color: #ff6b9d;
+        }
+
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -332,9 +386,11 @@ HTML_TEMPLATE = """
                 </div>
                 <nav>
                     <button class="nav-btn active" onclick="showSection('home')">Home</button>
-                    <button class="nav-btn" onclick="showSection('menstrual')">Cycle Tracker</button>
+                    <button class="nav-btn" onclick="showSection('menstrual')">Reproductive & Mental Health</button>
                     <button class="nav-btn" onclick="showSection('fitness')">Diet & Exercise</button>
                     <button class="nav-btn" onclick="showSection('chatbot')">Chat</button>
+                    <button class="nav-btn" onclick="showSection('resources')">Resources</button>
+
                 </nav>
             </div>
         </header>
@@ -451,6 +507,54 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
             </section>
+
+            <!-- RESOURCES SECTION -->
+            <section id="resources" class="section">
+                <h2 class="section-title">Helpful links</h2>
+                <p class="section-description">
+                    Trusted medical sources for women's health information.
+                </p>
+                
+                <div class="resource-list">
+                    <div class="resource-item">
+                        <h4>Women's Health (womenshealth.gov)</h4>
+                        <p>Official U.S. government resource providing reliable, accessible health information for women.</p>
+                        <a href="https://www.womenshealth.gov/" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>ACOG - American College of Obstetricians and Gynecologists</h4>
+                        <p>Expert resources on women's reproductive health, pregnancy, and gynecological care.</p>
+                        <a href="https://www.acog.org/" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>Mayo Clinic Women's Health</h4>
+                        <p>Evidence-based information on women's health conditions, treatments, and wellness.</p>
+                        <a href="https://www.mayoclinic.org/diseases-conditions/" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>Cleveland Clinic Health Library</h4>
+                        <p>Comprehensive health information reviewed by medical professionals.</p>
+                        <a href="https://my.clevelandclinic.org/health" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>Planned Parenthood</h4>
+                        <p>Information about reproductive health, birth control, and sexual wellness.</p>
+                        <a href="https://www.plannedparenthood.org/learn" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>NIH - Office of Research on Women's Health</h4>
+                        <p>Research and resources on women's health from the National Institutes of Health.</p>
+                        <a href="https://orwh.od.nih.gov/" target="_blank">Visit Website →</a>
+                    </div>
+                </div>
+            </section>
+
+
         </main>
     </div>
 
@@ -501,17 +605,47 @@ HTML_TEMPLATE = """
                 userMsg.style.cssText = 'background: #ffb3d9; color: white; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; margin-left: auto; text-align: right;';
                 userMsg.textContent = message;
                 messagesContainer.appendChild(userMsg);
-                
-                setTimeout(() => {
+
+                // Show loading indicator
+                const loadingMsg = document.createElement('div');
+                loadingMsg.id = 'loading-msg';
+                loadingMsg.style.cssText = 'background: #fff5f8; color: #999; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
+                loadingMsg.textContent = 'Thinking...';
+                messagesContainer.appendChild(loadingMsg);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                // Call backend
+                fetch('/api/chatbot', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: message })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    // Remove loading message
+                    const loading = document.getElementById('loading-msg');
+                    if (loading) loading.remove();
+                    
                     const botMsg = document.createElement('div');
                     botMsg.style.cssText = 'background: #fff5f8; color: #666; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
-                    botMsg.textContent = 'Chatbot integration coming soon!';
+                    botMsg.textContent = data.reply;
                     messagesContainer.appendChild(botMsg);
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                }, 500);
-                
+                })
+                .catch(error => {
+                    // Remove loading message
+                    const loading = document.getElementById('loading-msg');
+                    if (loading) loading.remove();
+                    
+                    console.error('Error:', error);
+                    const errorMsg = document.createElement('div');
+                    errorMsg.style.cssText = 'background: #ffebee; color: #c62828; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ef9a9a;';
+                    errorMsg.textContent = 'Sorry, there was an error processing your message.';
+                    messagesContainer.appendChild(errorMsg);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                });
+
                 input.value = '';
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
         }
 
@@ -525,46 +659,86 @@ HTML_TEMPLATE = """
 </html>
 """
 
+print("🚀 Initializing Women's Health RAG System...")
+rag = WomensHealthRAG(
+    knowledge_base_path="./chat/data.csv",
+    generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"  # Your fine-tuned model
+)
+print("=" * 60)
+
+# --- ROUTES ---
 @app.route('/')
 def home():
-    """Main page route"""
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/api/menstrual/tracker', methods=['GET', 'POST'])
 def menstrual_tracker():
-    """API endpoint for menstrual cycle tracking"""
     return {"status": "success", "message": "Menstrual tracker endpoint"}
 
 @app.route('/api/menstrual/journal', methods=['GET', 'POST'])
 def menstrual_journal():
-    """API endpoint for menstrual journal entries"""
     return {"status": "success", "message": "Menstrual journal endpoint"}
 
 @app.route('/api/fitness/diet', methods=['GET', 'POST'])
 def diet_tracker():
-    """API endpoint for diet tracking"""
     return {"status": "success", "message": "Diet tracker endpoint"}
 
 @app.route('/api/fitness/exercise', methods=['GET', 'POST'])
 def exercise_tracker():
-    """API endpoint for exercise tracking"""
     return {"status": "success", "message": "Exercise tracker endpoint"}
+
+# @app.route('/api/chatbot', methods=['POST'])
+# def chatbot():
+#     try:
+#         data = request.json
+#         user_msg = data.get("message", "")
+#         print(f"\n{'='*60}")
+#         print(f"📩 User: {user_msg}")
+        
+#         if not user_msg:
+#             return jsonify({"reply": "Please enter a message."})
+        
+#         # Generate response using RAG
+#         reply = rag_system.generate_response(user_msg, top_k=3, verbose=True)
+        
+#         print(f"✅ Assistant: {reply}")
+#         print(f"{'='*60}\n")
+        
+#         return jsonify({"reply": reply})
+        
+#     except Exception as e:
+#         print(f"❌ Error in chatbot endpoint: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"reply": "Sorry, I encountered an error processing your message."}), 500
 
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
-    """API endpoint for health assistant chatbot"""
-    return {"status": "success", "message": "Chatbot endpoint"}
-
-# what to work on:
-# implement backend for each endpoint:
-# 1. period tracker
-# 2. journal
-# 3. diet tracker
-# 4. exercise tracker
-# 5. chatbot
-
-# decide which features are premium
-# add on more depending on time
+    try:
+        data = request.json
+        user_msg = data.get("message", "")
+        print(f"\n{'='*60}")
+        print(f"📩 User: {user_msg}")
+        
+        if not user_msg:
+            return jsonify({"reply": "Please enter a message."})
+        
+        # Use the simpler response method
+        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
+        
+        print(f"✅ Assistant: {reply}")
+        print(f"{'='*60}\n")
+        
+        return jsonify({"reply": reply})
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"reply": "Sorry, I encountered an error."}), 500
 
 if __name__ == '__main__':
+    print("\n🌐 Starting Flask server on http://localhost:5001")
+    print("💬 Chat interface ready!")
+    print("=" * 60)
     app.run(debug=True, host='0.0.0.0', port=5001)
