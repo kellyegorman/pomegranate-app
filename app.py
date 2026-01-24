@@ -396,7 +396,7 @@ HTML_TEMPLATE = """
         </header>
 
         <main class="main-content">
-            <!-- HOME SECTION -->
+            <!-- home  -->
             <section id="home" class="section active">
                 <div class="hero">
                     <h2 class="hero-title">Welcome to app </h2>
@@ -430,7 +430,7 @@ HTML_TEMPLATE = """
                 </div>
             </section>
 
-            <!-- MENSTRUAL SECTION -->
+            <!-- Menstural & Mental -->
             <section id="menstrual" class="section">
                 <h2 class="section-title">Menstrual Cycle Tracker</h2>
                 <p class="section-description">
@@ -459,7 +459,7 @@ HTML_TEMPLATE = """
                 </div>
             </section>
 
-            <!-- FITNESS SECTION -->
+            <!-- Diet & Exercise -->
             <section id="fitness" class="section">
                 <h2 class="section-title">Diet & Exercise</h2>
                 <p class="section-description">
@@ -488,7 +488,7 @@ HTML_TEMPLATE = """
                 </div>
             </section>
 
-            <!-- CHATBOT SECTION -->
+            <!-- Chat (Pommie!!) -->
             <section id="chatbot" class="section">
                 <h2 class="section-title">Health Assistant</h2>
                 <p class="section-description">
@@ -508,7 +508,7 @@ HTML_TEMPLATE = """
                 </div>
             </section>
 
-            <!-- RESOURCES SECTION -->
+            <!-- resources (link + zip??) -->
             <section id="resources" class="section">
                 <h2 class="section-title">Helpful links</h2>
                 <p class="section-description">
@@ -659,14 +659,14 @@ HTML_TEMPLATE = """
 </html>
 """
 
-print("🚀 Initializing Women's Health RAG System...")
+print("Initializing rag...")
 rag = WomensHealthRAG(
     knowledge_base_path="./chat/data.csv",
-    generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"  # Your fine-tuned model
+    # tinyllama fine-tuned responses took waayyyy too long
+    generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned" 
 )
 print("=" * 60)
 
-# --- ROUTES ---
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
@@ -693,7 +693,7 @@ def exercise_tracker():
 #         data = request.json
 #         user_msg = data.get("message", "")
 #         print(f"\n{'='*60}")
-#         print(f"📩 User: {user_msg}")
+#         print(f"User: {user_msg}")
         
 #         if not user_msg:
 #             return jsonify({"reply": "Please enter a message."})
@@ -701,13 +701,13 @@ def exercise_tracker():
 #         # Generate response using RAG
 #         reply = rag_system.generate_response(user_msg, top_k=3, verbose=True)
         
-#         print(f"✅ Assistant: {reply}")
+#         print(f"Assistant: {reply}")
 #         print(f"{'='*60}\n")
         
 #         return jsonify({"reply": reply})
         
 #     except Exception as e:
-#         print(f"❌ Error in chatbot endpoint: {e}")
+#         print(f"Error in chatbot endpoint: {e}")
 #         import traceback
 #         traceback.print_exc()
 #         return jsonify({"reply": "Sorry, I encountered an error processing your message."}), 500
@@ -723,22 +723,21 @@ def chatbot():
         if not user_msg:
             return jsonify({"reply": "Please enter a message."})
         
-        # Use the simpler response method
         reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
         
-        print(f"✅ Assistant: {reply}")
+        print(f"Assistant: {reply}")
         print(f"{'='*60}\n")
         
         return jsonify({"reply": reply})
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
 
 if __name__ == '__main__':
-    print("\n🌐 Starting Flask server on http://localhost:5001")
-    print("💬 Chat interface ready!")
+    print("\nStarting Flask server on http://localhost:5001")
+    # print("Chat interface ready!")
     print("=" * 60)
     app.run(debug=True, host='0.0.0.0', port=5001)

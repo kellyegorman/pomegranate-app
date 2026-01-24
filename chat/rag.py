@@ -1,8 +1,7 @@
-# chat/rag.py
-"""
-RAG System - Dataset Only with Dual Model Architecture
-Uses lightweight embeddings and fine-tuned DistilGPT2 for fast generation
-"""
+## rag (using cleaned data.csv after processing -> data_fixed.csv)
+# if there is no very similar q&a in dataset, generate using distilgpt2 fine-tuned
+# ^^ responses would be better with something like microsfot/phi2 or tinyllama
+# but not powerful enough computing resources locally for something like that 
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -22,10 +21,10 @@ class WomensHealthRAG:
         - Fine-tuned DistilGPT2 for fast generation
         """
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
-        print(f"📱 Using device: {self.device}")
+        print(f"Using device: {self.device}")
         
-        # Load knowledge base with robust CSV parsing
-        print("📚 Loading knowledge base...")
+        # load knowledge for rag & parse csv
+        print("load data")
         try:
             self.kb = pd.read_csv(
                 knowledge_base_path,
@@ -35,7 +34,7 @@ class WomensHealthRAG:
                 engine='python'
             )
         except Exception as e:
-            print(f"⚠️ Error with strict parsing, trying lenient mode: {e}")
+            print(f"Error with parsing -> trying again: {e}")
             self.kb = pd.read_csv(
                 knowledge_base_path,
                 on_bad_lines='skip',
@@ -48,24 +47,24 @@ class WomensHealthRAG:
         print(f"   Loaded {len(self.kb)} Q&A pairs")
         
         # Load embedding model (lightweight for similarity search)
-        print("🔍 Loading embedding model...")
+        # helps determine if there are similar q&a from data for rag 
+        print("Embedding model (allminilml6) loading")
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
         
-        # Create embeddings
-        print("💾 Creating knowledge base embeddings...")
+        # embeddings
+        print("Making embeddings for csv dataset")
         self.kb_embeddings = self.embedder.encode(
             self.kb['instruction'].tolist(),
             show_progress_bar=True,
             batch_size=32
         )
         
-        # Load fine-tuned DistilGPT2 for fast generation
-        print(f"⚡ Loading fine-tuned DistilGPT2 from {generation_model_path}...")
+        # load fine-tuned DistilGPT2 
+        print(f"Loading fine-tuned DistilGPT2 from {generation_model_path}")
         
-        # Check if local path exists
+        # local path??
         if os.path.exists(generation_model_path):
             try:
-                # Load from local directory
                 self.gen_tokenizer = AutoTokenizer.from_pretrained(
                     generation_model_path,
                     local_files_only=True
@@ -80,21 +79,21 @@ class WomensHealthRAG:
                 )
                 self.gen_model.to(self.device)
                 self.gen_model.eval()
-                print("✅ Fine-tuned DistilGPT2 loaded successfully!")
+                print("loaded successfully!")
                 self.using_finetuned = True
             except Exception as e:
-                print(f"⚠️ Could not load fine-tuned model: {e}")
-                print("   Falling back to base DistilGPT2...")
+                print(f"COULDNT load this model: {e}")
+                print("use un-fine-tuned version instead")
                 self._load_base_model()
         else:
-            print(f"⚠️ Path {generation_model_path} not found")
-            print("   Falling back to base DistilGPT2...")
+            print(f"Path {generation_model_path} not found")
+            print("use un-fine-tuned version instead")
             self._load_base_model()
         
-        print("✅ RAG system ready!\n")
+        print("RAG ready!\n")
     
+    #load base model if fine-tuned not able
     def _load_base_model(self):
-        """Load base DistilGPT2 as fallback"""
         self.gen_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
         self.gen_tokenizer.pad_token = self.gen_tokenizer.eos_token
         self.gen_model = AutoModelForCausalLM.from_pretrained(
@@ -105,8 +104,8 @@ class WomensHealthRAG:
         self.gen_model.eval()
         self.using_finetuned = False
     
+    #get most relevant from q&a using similarity score
     def retrieve_context(self, query: str, top_k: int = 3) -> List[Dict]:
-        """Retrieve most relevant Q&A pairs from knowledge base"""
         query_embedding = self.embedder.encode([query])[0]
         
         similarities = np.dot(self.kb_embeddings, query_embedding) / (
@@ -137,12 +136,12 @@ class WomensHealthRAG:
         max_similarity = context[0]['similarity']
         
         if verbose:
-            print(f"🔍 Retrieved {len(context)} relevant examples:")
+            print(f"Retrieved {len(context)} relevant examples:")
             for i, ctx in enumerate(context, 1):
                 print(f"   {i}. {ctx['question'][:50]}... (similarity: {ctx['similarity']:.3f})")
-            print(f"📊 Max similarity: {max_similarity:.3f}")
+            print(f"Max similarity: {max_similarity:.3f}")
         
-        # Strategy 1: High similarity - use direct answer
+        #  HIGH --> use answer
         if max_similarity > 0.75:
             if verbose:
                 print("✨ High similarity - using direct answer with context")
@@ -160,23 +159,23 @@ class WomensHealthRAG:
             else:
                 return base_answer
         
-        # Strategy 2: Medium similarity - use fine-tuned DistilGPT2 for FAST generation
+        # MEDIUM --> use fine-tuned DistilGPT2  (answers won't always be great btu faster)
         elif max_similarity > similarity_threshold:
             if verbose:
                 model_type = "fine-tuned DistilGPT2" if self.using_finetuned else "base DistilGPT2"
                 print(f"⚡ Medium similarity - using {model_type} for fast generation")
             
-            # Build context from top 2 similar examples
+            # CONTEXT from top FOUR SIMILAR EXs
             context_str = ""
-            for ctx in context[:2]:
+            for ctx in context[:4]:
                 context_str += f"Q: {ctx['question']}\nA: {ctx['answer']}\n\n"
             
-            # Use the format based on whether we're using fine-tuned or base model
+            #  format based on whether fine-tuned or base 
             if self.using_finetuned:
-                # Use the format your fine-tuned model was trained on
+                # fine-tuned 
                 prompt = f"<|user|>\n{user_query}\n<|assistant|>\n"
             else:
-                # For base model, use simpler format with context
+                # base 
                 prompt = f"Based on this information:\n\n{context_str}\nQuestion: {user_query}\nAnswer:"
             
             inputs = self.gen_tokenizer(
@@ -211,13 +210,13 @@ class WomensHealthRAG:
             else:
                 reply = full_output[len(prompt):].strip()
             
-            # Clean up any remaining artifacts
-            reply = reply.split("\n\n")[0].strip()  # Take first paragraph
+            # Clean (first apragraph)
+            reply = reply.split("\n\n")[0].strip()
             
             if verbose:
-                print(f"💬 Generated: {reply[:100]}...")
+                print(f"Generated: {reply[:100]}...")
             
-            # Check if the generated reply is reasonable
+            #  reasonable?
             if reply and len(reply) > 20:
                 return reply
             else:
@@ -227,8 +226,8 @@ class WomensHealthRAG:
                 if max_similarity > 0.6:
                     return context[0]['answer']
         
-        # Strategy 3: Low similarity - provide "Resources tab" message
+        # LOW --> tell user to check resources instead
         if verbose:
-            print("ℹ️ Low similarity or failed generation - providing Resources tab message")
+            print("Low similarity or failed generation - providing Resources tab message")
         
         return "I'm sorry, I can't provide an answer to that. Please see the resources tab for more information!"

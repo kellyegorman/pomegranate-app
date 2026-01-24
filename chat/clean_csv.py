@@ -1,7 +1,8 @@
+# was having errors with a few lines being read from data.csv so here is some cleaning logic
 import pandas as pd
 import csv
 
-# Read with more lenient settings
+# read w/ more lenient settings
 df = pd.read_csv(
     './chat/data.csv',
     quoting=csv.QUOTE_ALL,
