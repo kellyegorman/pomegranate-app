@@ -1,0 +1,31 @@
+# Model artifacts
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+
+# Checkpoints
+checkpoint-*/
+checkpoints/
+runs/
+
+# Adapters / fine-tuning outputs
+chat/fine-tune-attempts/
+chat/adapters/
+chat/models/
+
+# Tokenizers
+tokenizer.json
+tokenizer_config.json
+special_tokens_map.json
+
+# Cache
+__pycache__/
+.cache/
+.ipynb_checkpoints/
+
+# Python
+*.pyc
+
+# OS
+.DS_Store
