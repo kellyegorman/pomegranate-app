@@ -1,0 +1,80 @@
+[
+  {
+    "id": "brisk_walk",
+    "name": "Brisk Walk",
+    "type": "cardio",
+    "impact": "low",
+    "targets": ["cardio", "weight loss", "general fitness"],
+    "recommended_for": ["average","lean","curvy","athletic","apple","pear"],
+    "suitable_age_min": 12,
+    "suitable_age_max": 120,
+    "contraindications": ["chest pain","shortness of breath","fainting / near-faint"],
+    "duration_min": 10,
+    "description": "Easy to start: 20–30 minutes at a brisk pace. Low impact and suitable for most fitness levels."
+  },
+  {
+    "id": "bodyweight_squats",
+    "name": "Bodyweight Squats",
+    "type": "strength",
+    "impact": "moderate",
+    "targets": ["lower body", "glutes", "legs"],
+    "recommended_for": ["average","curvy","athletic","pear"],
+    "suitable_age_min": 14,
+    "suitable_age_max": 80,
+    "contraindications": ["severe pain","joint pain"],
+    "duration_min": 5,
+    "description": "3 sets of 10–15 reps. Focus on form; use a chair for support if needed. Good for building lower-body strength."
+  },
+  {
+    "id": "pelvic_floor_exercises",
+    "name": "Pelvic Floor (Kegels)",
+    "type": "rehab",
+    "impact": "low",
+    "targets": ["pelvic floor"],
+    "recommended_for": ["average","curvy","athletic","pear","apple"],
+    "suitable_age_min": 18,
+    "suitable_age_max": 120,
+    "contraindications": [],
+    "duration_min": 2,
+    "description": "Short sets performed daily; helpful during pregnancy, postpartum, and for pelvic floor issues."
+  },
+  {
+    "id": "low_impact_cardio",
+    "name": "Low-impact Cardio (Bike/Elliptical)",
+    "type": "cardio",
+    "impact": "low",
+    "targets": ["cardio", "joint-friendly"],
+    "recommended_for": ["average","lean","curvy","athletic","apple","pear"],
+    "suitable_age_min": 16,
+    "suitable_age_max": 90,
+    "contraindications": ["severe pain","shortness of breath"],
+    "duration_min": 15,
+    "description": "Good for improving cardiovascular health while reducing joint stress."
+  },
+  {
+    "id": "resistance_band_workout",
+    "name": "Resistance Band Full-Body",
+    "type": "strength",
+    "impact": "low-moderate",
+    "targets": ["full body","strength"],
+    "recommended_for": ["average","lean","curvy","athletic"],
+    "suitable_age_min": 14,
+    "suitable_age_max": 80,
+    "contraindications": ["severe pain","joint pain"],
+    "duration_min": 15,
+    "description": "Simple full-body routine using resistance bands; scalable resistance and joint-friendly when done with control."
+  },
+  {
+    "id": "gentle_yoga",
+    "name": "Gentle Yoga / Stretching",
+    "type": "flexibility",
+    "impact": "low",
+    "targets": ["mobility","stress relief"],
+    "recommended_for": ["average","lean","curvy","athletic","apple","pear"],
+    "suitable_age_min": 12,
+    "suitable_age_max": 120,
+    "contraindications": [],
+    "duration_min": 10,
+    "description": "Helps mobility and stress reduction; can be adapted for pregnancy and menopause with modifications."
+  }
+]

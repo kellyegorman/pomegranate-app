@@ -1064,33 +1064,49 @@ HTML_TEMPLATE = """
         function showSection(sectionName) {
             const sections = document.querySelectorAll('.section');
             const buttons = document.querySelectorAll('.nav-btn');
-            
+
             sections.forEach(section => {
                 section.classList.remove('active');
             });
-            
+
             buttons.forEach(button => {
                 button.classList.remove('active');
             });
-            
+
             document.getElementById(sectionName).classList.add('active');
-            event.target.classList.add('active');
+            // determine clicked button: prefer document.activeElement, otherwise fallback to matching onclick
+            let clicked = document.activeElement;
+            if (!clicked || !clicked.classList || !clicked.classList.contains('nav-btn')) {
+                clicked = Array.from(buttons).find(b => {
+                    const attr = b.getAttribute('onclick') || '';
+                    return attr.includes(`showSection('${sectionName}')`) || attr.includes(`showSection("${sectionName}")`);
+                }) || null;
+            }
+            if (clicked) clicked.classList.add('active');
         }
 
         function showTab(sectionName, tabName) {
             const tabs = document.querySelectorAll(`#${sectionName} .tab-content`);
             const buttons = document.querySelectorAll(`#${sectionName} .tab-btn`);
-            
+
             tabs.forEach(tab => {
                 tab.classList.remove('active');
             });
-            
+
             buttons.forEach(button => {
                 button.classList.remove('active');
             });
-            
+
             document.getElementById(`${sectionName}-${tabName}`).classList.add('active');
-            event.target.classList.add('active');
+            // set active on the clicked tab button
+            let clicked = document.activeElement;
+            if (!clicked || !clicked.classList || !clicked.classList.contains('tab-btn')) {
+                clicked = Array.from(buttons).find(b => {
+                    const attr = b.getAttribute('onclick') || '';
+                    return attr.includes(`showTab('${sectionName}', '${tabName}')`) || attr.includes(`showTab("${sectionName}", "${tabName}")`);
+                }) || null;
+            }
+            if (clicked) clicked.classList.add('active');
         }
 
         function sendMessage() {
@@ -1547,11 +1563,27 @@ HTML_TEMPLATE = """
 """
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
 engine = SymptomNutritionEngine()
 print("Nutrition Engine ready!")
 
 provider_searcher = ProviderSearcher()
+=======
+print("Initializing rag...")
+try:
+    from sentence_transformers import SentenceTransformer
+    rag = WomensHealthRAG(
+        knowledge_base_path="./chat/data.csv",
+        # tinyllama fine-tuned responses took waayyyy too long
+        generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"
+    )
+    print("RAG initialized successfully.")
+except Exception as e:
+    print("Warning: RAG initialization failed — continuing without RAG.")
+    print(e)
+    rag = None
+>>>>>>> Stashed changes
 print("=" * 60)
 
 print("Initializing rag...")
@@ -1710,6 +1742,7 @@ def search_providers():
                 'error': 'Please enter a valid 5-digit ZIP code'
             }), 400
         
+<<<<<<< Updated upstream
         print(f"🔍 Searching providers for ZIP: {zipcode}")
         
         # Get coordinates from zipcode
@@ -1742,6 +1775,17 @@ def search_providers():
             'providers': providers[:20],  # Limit to 20 results
             'mental_health_resources': mental_health
         })
+=======
+        if rag is None:
+            return jsonify({"reply": "RAG unavailable — backend model stack not initialized in this environment."})
+
+        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
+
+        print(f"Assistant: {reply}")
+        print(f"{'='*60}\n")
+
+        return jsonify({"reply": reply})
+>>>>>>> Stashed changes
         
     except Exception as e:
         print(f"❌ Error searching providers: {e}")
