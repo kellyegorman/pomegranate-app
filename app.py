@@ -2,6 +2,7 @@
 # http://localhost:5001
 # run using python app.py and then go to ^^
 # to do list @ bottom, we can add more tabs to app if we have time!
+
 from flask import Flask, render_template_string, request, jsonify
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -14,6 +15,8 @@ from back.nutrition_api import nutrition_bp
 from chat.find_a_provider import ProviderSearcher
 from flask import Flask, render_template, render_template_string, request, jsonify
 import time
+
+import json
 
 app = Flask(__name__)
 
@@ -1571,6 +1574,10 @@ HTML_TEMPLATE = """
             <div class="stat-value" id="currentPhase">--</div>
         <div class="phase-day" id="phaseDay"></div>
         </div>
+        <div id="phaseInfoModal" class="modal">
+            <div class="modal-body" id="phaseModalBody">
+            </div>
+        </div>
         </div>
 
         <div class="calendar-header">
@@ -2864,7 +2871,7 @@ HTML_TEMPLATE = """
             
             if (phaseData) {
                 // Update text content
-                phaseElement.textContent = `${phaseData.emoji} ${phaseData.phase}`;
+                phaseElement.textContent = `${phaseData.phase}`;
                 phaseDayElement.textContent = `Day ${phaseData.cycleDay} of ${phaseData.totalDays}`;
                 
                 // Update card styling based on phase
@@ -3151,6 +3158,81 @@ HTML_TEMPLATE = """
             
             URL.revokeObjectURL(url);
         }
+
+ // Phase Info Functions
+const phaseCard = document.getElementById('phaseCard');
+
+phaseCard.addEventListener('click', () => {
+    const phaseName = document
+        .getElementById('currentPhase')
+        .textContent
+        .trim()
+        .toLowerCase();
+
+    if (!phaseName || phaseName === '--') return;
+
+    openPhaseInfoModal(phaseName);
+});
+
+// Open the popup
+async function openPhaseInfoModal(phaseName) {
+    const modal = document.getElementById('phaseInfoModal');
+    const modalBody = document.getElementById('phaseModalBody');
+
+    modal.style.display = 'block';
+    modalBody.innerHTML = 'Loading...';
+
+    try {
+        const response = await fetch('/api/menstrual/phase-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phase: phaseName })
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch');
+
+        const result = await response.json();
+        const phaseInfo = result.data;
+
+        if (!phaseInfo) {
+            modalBody.innerHTML = 'No information available.';
+            return;
+        }
+
+        modalBody.innerHTML = `
+            <h2>${phaseInfo.title}</h2>
+            <p><strong>${phaseInfo.day_range}</strong></p>
+
+            <p>${phaseInfo.summary}</p>
+
+            <h4>What’s happening</h4>
+            <p>${phaseInfo.what_is_happening}</p>
+
+            <h4>Traits</h4>
+            <ul>
+                <li><strong>Physical:</strong> ${phaseInfo.traits.physical}</li>
+                <li><strong>Emotional:</strong> ${phaseInfo.traits.emotional}</li>
+                <li><strong>Mental:</strong> ${phaseInfo.traits.mental}</li>
+            </ul>
+            `;
+
+    } catch (err) {
+        modalBody.innerHTML = 'Error loading phase information.';
+        console.error(err);
+    }
+}
+
+// Close the popup
+function closePhaseModal() {
+    document.getElementById('phaseInfoModal').style.display = 'none';
+}
+
+// Close when clicking outside popup
+window.addEventListener('click', event => {
+    const modal = document.getElementById('phaseInfoModal');
+    if (event.target === modal) closePhaseModal();
+});
+
 
         // Initialize
         loadData();
@@ -3790,6 +3872,17 @@ def menstrual_tracker():
 @app.route('/api/menstrual/journal', methods=['GET', 'POST'])
 def menstrual_journal():
     return {"status": "success", "message": "Menstrual journal endpoint"}
+
+@app.route('/api/menstrual/phase-info', methods=['POST'])
+def get_phase_info():
+    phase = request.json.get('phase')
+
+    with open("back/tracker.json") as f:
+        data = json.load(f)
+
+    return jsonify({
+        "data": data.get(phase.lower(), {})
+    })
 
 @app.route('/api/fitness/diet', methods=['GET', 'POST'])
 def diet_tracker():
