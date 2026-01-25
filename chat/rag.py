@@ -4,9 +4,6 @@
 # but not powerful enough computing resources locally for something like that 
 # chat/rag.py
 # chat/rag.py
-"""
-RAG System - Dataset Only with Feedback System
-"""
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -20,13 +17,12 @@ import os
 class WomensHealthRAG:
     def __init__(self, knowledge_base_path: str, 
                  generation_model_path: str = "./chat/distilgpt2-finetuned"):
-        """Initialize RAG system with feedback capabilities"""
+
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.knowledge_base_path = knowledge_base_path
         print(f"📱 Using device: {self.device}")
         
-        # Load knowledge base with robust CSV parsing
-        print("📚 Loading knowledge base...")
+        # csv data
         try:
             self.kb = pd.read_csv(
                 knowledge_base_path,
@@ -48,11 +44,10 @@ class WomensHealthRAG:
         self.kb = self.kb.dropna(subset=['instruction', 'output'])
         print(f"   Loaded {len(self.kb)} Q&A pairs")
         
-        # Load embedding model
-        print("🔍 Loading embedding model...")
+        # embedding model
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
         
-        # Create embeddings
+        # embeddings
         print("💾 Creating knowledge base embeddings...")
         self.kb_embeddings = self.embedder.encode(
             self.kb['instruction'].tolist(),
@@ -60,7 +55,7 @@ class WomensHealthRAG:
             batch_size=32
         )
         
-        # Load fine-tuned DistilGPT2
+        # laod fine tuned distilgpt 
         print(f"⚡ Loading fine-tuned DistilGPT2 from {generation_model_path}...")
         
         if os.path.exists(generation_model_path):
@@ -90,10 +85,8 @@ class WomensHealthRAG:
             print("   Falling back to base DistilGPT2...")
             self._load_base_model()
         
-        print("✅ RAG system ready!\n")
     
     def _load_base_model(self):
-        """Load base DistilGPT2 as fallback"""
         self.gen_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
         self.gen_tokenizer.pad_token = self.gen_tokenizer.eos_token
         self.gen_model = AutoModelForCausalLM.from_pretrained(
@@ -105,7 +98,6 @@ class WomensHealthRAG:
         self.using_finetuned = False
     
     def retrieve_context(self, query: str, top_k: int = 3) -> List[Dict]:
-        """Retrieve most relevant Q&A pairs from knowledge base"""
         query_embedding = self.embedder.encode([query])[0]
         
         similarities = np.dot(self.kb_embeddings, query_embedding) / (
@@ -126,25 +118,17 @@ class WomensHealthRAG:
     
     def generate_response_simple(self, user_query: str, top_k: int = 3, verbose: bool = False, 
                                 similarity_threshold: float = 0.5, regenerate: bool = False) -> Dict:
-        """
-        Generate response and return metadata for feedback system
-        Returns: {
-            'reply': str,
-            'needs_feedback': bool,
-            'similarity': float,
-            'response_type': str  # 'direct', 'generated', or 'fallback'
-        }
-        """
+
         context = self.retrieve_context(user_query, top_k=top_k)
         max_similarity = context[0]['similarity']
         
         if verbose:
-            print(f"🔍 Retrieved {len(context)} relevant examples:")
+            print(f"Retrieved {len(context)} relevant examples:")
             for i, ctx in enumerate(context, 1):
                 print(f"   {i}. {ctx['question'][:50]}... (similarity: {ctx['similarity']:.3f})")
-            print(f"📊 Max similarity: {max_similarity:.3f}")
+            print(f"Max similarity: {max_similarity:.3f}")
         
-        # Strategy 1: High similarity - use direct answer
+        # high similarity - direct answer
         if max_similarity > 0.75:
             if verbose:
                 print("✨ High similarity - using direct answer with context")
@@ -164,11 +148,11 @@ class WomensHealthRAG:
                 'response_type': 'direct'
             }
         
-        # Strategy 2: Medium similarity - use model generation with feedback
+        # medium similarity - generate answer
         elif max_similarity > similarity_threshold:
             if verbose:
                 model_type = "fine-tuned DistilGPT2" if self.using_finetuned else "base DistilGPT2"
-                print(f"⚡ Medium similarity - using {model_type} for generation")
+                print(f"Medium similarity - using {model_type} for generation")
             
             context_str = ""
             for ctx in context[:2]:
@@ -186,7 +170,7 @@ class WomensHealthRAG:
                 max_length=512
             ).to(self.device)
             
-            # Adjust temperature for regeneration
+            # adjust temperature for regeneration
             temperature = 0.9 if regenerate else 0.7
             
             with torch.no_grad():
@@ -216,18 +200,18 @@ class WomensHealthRAG:
             reply = reply.split("\n\n")[0].strip()
             
             if verbose:
-                print(f"💬 Generated: {reply[:100]}...")
+                print(f"Generated: {reply[:100]}...")
             
             if reply and len(reply) > 20:
                 return {
                     'reply': reply,
-                    'needs_feedback': True,  # Requires user validation
+                    'needs_feedback': True,
                     'similarity': max_similarity,
                     'response_type': 'generated'
                 }
             else:
                 if verbose:
-                    print("⚠️ Generation produced poor output - falling back")
+                    print("Generation produced poor output - falling back")
                 if max_similarity > 0.6:
                     return {
                         'reply': context[0]['answer'],
@@ -238,7 +222,7 @@ class WomensHealthRAG:
         
         # Strategy 3: Low similarity - resources message
         if verbose:
-            print("ℹ️ Low similarity - providing Resources tab message")
+            print("Low similarity - providing Resources tab message")
         
         return {
             'reply': "I'm sorry, I can't provide an answer to that. Please see the resources tab for more information!",
@@ -248,9 +232,9 @@ class WomensHealthRAG:
         }
     
     def add_to_dataset(self, question: str, answer: str) -> bool:
-        """Add a validated Q&A pair to the dataset"""
+
         try:
-            # Add to in-memory dataframe
+
             new_row = pd.DataFrame({
                 'instruction': [question.strip()],
                 'output': [answer.strip()]
@@ -264,10 +248,10 @@ class WomensHealthRAG:
             new_embedding = self.embedder.encode([question.strip()])
             self.kb_embeddings = np.vstack([self.kb_embeddings, new_embedding])
             
-            print(f"✅ Added to dataset: {question[:50]}...")
+            print(f"Added to dataset: {question[:50]}...")
             return True
         except Exception as e:
-            print(f"❌ Error adding to dataset: {e}")
+            print(f"Error adding to dataset: {e}")
             return False
     
     def reload_dataset(self):
@@ -277,8 +261,8 @@ class WomensHealthRAG:
             self.kb.columns = [c.strip().lower().replace("\ufeff", "") for c in self.kb.columns]
             self.kb = self.kb.dropna(subset=['instruction', 'output'])
             self.kb_embeddings = self.embedder.encode(self.kb['instruction'].tolist(), batch_size=32)
-            print(f"🔄 Dataset reloaded: {len(self.kb)} Q&A pairs")
+            print(f"Dataset reloaded: {len(self.kb)} Q&A pairs")
             return True
         except Exception as e:
-            print(f"❌ Error reloading dataset: {e}")
+            print(f"Error reloading dataset: {e}")
             return False
