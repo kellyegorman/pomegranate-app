@@ -8,14 +8,16 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import pandas as pd
-from flask import Flask, render_template_string, request, jsonify
 from chat.rag import WomensHealthRAG
 from back.nutrition_engine import SymptomNutritionEngine
-from flask import Flask, render_template_string
+from back.nutrition_api import nutrition_bp
 from chat.find_a_provider import ProviderSearcher
 
 
 app = Flask(__name__)
+
+# Register blueprints
+app.register_blueprint(nutrition_bp)
 
 
 HTML_TEMPLATE = """
