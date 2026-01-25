@@ -11,11 +11,9 @@ import pandas as pd
 from flask import Flask, render_template_string, request, jsonify
 from chat.rag import WomensHealthRAG
 
-
 app = Flask(__name__)
 
 
-# HTML Template (keeping your existing template)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -591,6 +589,9 @@ HTML_TEMPLATE = """
             event.target.classList.add('active');
         }
 
+        // Global variable to track current message for feedback
+        let currentMessageData = null;
+
         function sendMessage() {
             const input = document.getElementById('chatInput');
             const messagesContainer = document.getElementById('chatMessages');
@@ -606,7 +607,6 @@ HTML_TEMPLATE = """
                 userMsg.textContent = message;
                 messagesContainer.appendChild(userMsg);
 
-                // Show loading indicator
                 const loadingMsg = document.createElement('div');
                 loadingMsg.id = 'loading-msg';
                 loadingMsg.style.cssText = 'background: #fff5f8; color: #999; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
@@ -614,7 +614,6 @@ HTML_TEMPLATE = """
                 messagesContainer.appendChild(loadingMsg);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-                // Call backend
                 fetch('/api/chatbot', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -622,18 +621,12 @@ HTML_TEMPLATE = """
                 })
                 .then(res => res.json())
                 .then(data => {
-                    // Remove loading message
                     const loading = document.getElementById('loading-msg');
                     if (loading) loading.remove();
                     
-                    const botMsg = document.createElement('div');
-                    botMsg.style.cssText = 'background: #fff5f8; color: #666; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
-                    botMsg.textContent = data.reply;
-                    messagesContainer.appendChild(botMsg);
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    displayBotMessage(data, message, messagesContainer);
                 })
                 .catch(error => {
-                    // Remove loading message
                     const loading = document.getElementById('loading-msg');
                     if (loading) loading.remove();
                     
@@ -649,6 +642,101 @@ HTML_TEMPLATE = """
             }
         }
 
+        function displayBotMessage(data, question, container) {
+            const botMsgContainer = document.createElement('div');
+            botMsgContainer.style.cssText = 'max-width: 70%; margin-bottom: 10px;';
+            botMsgContainer.id = 'latest-bot-message';
+            
+            const botMsg = document.createElement('div');
+            botMsg.style.cssText = 'background: #fff5f8; color: #666; padding: 12px 20px; border-radius: 18px; border: 2px solid #ffd6e8;';
+            botMsg.textContent = data.reply;
+            botMsgContainer.appendChild(botMsg);
+            
+            // Add feedback buttons if needed
+            if (data.needs_feedback) {
+                const feedbackContainer = document.createElement('div');
+                feedbackContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 8px; align-items: center;';
+                feedbackContainer.id = 'feedback-buttons';
+                
+                const feedbackText = document.createElement('span');
+                feedbackText.style.cssText = 'color: #999; font-size: 12px;';
+                feedbackText.textContent = 'Was this helpful?';
+                feedbackContainer.appendChild(feedbackText);
+                
+                const thumbsUpBtn = document.createElement('button');
+                thumbsUpBtn.innerHTML = '👍';
+                thumbsUpBtn.style.cssText = 'background: white; border: 2px solid #ffd6e8; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 16px; transition: all 0.3s ease;';
+                thumbsUpBtn.onmouseover = () => thumbsUpBtn.style.background = '#e8f5e9';
+                thumbsUpBtn.onmouseout = () => thumbsUpBtn.style.background = 'white';
+                thumbsUpBtn.onclick = () => handleFeedback('up', question, data.reply, botMsgContainer);
+                
+                const thumbsDownBtn = document.createElement('button');
+                thumbsDownBtn.innerHTML = '👎';
+                thumbsDownBtn.style.cssText = 'background: white; border: 2px solid #ffd6e8; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 16px; transition: all 0.3s ease;';
+                thumbsDownBtn.onmouseover = () => thumbsDownBtn.style.background = '#ffebee';
+                thumbsDownBtn.onmouseout = () => thumbsDownBtn.style.background = 'white';
+                thumbsDownBtn.onclick = () => handleFeedback('down', question, data.reply, botMsgContainer);
+                
+                feedbackContainer.appendChild(thumbsUpBtn);
+                feedbackContainer.appendChild(thumbsDownBtn);
+                botMsgContainer.appendChild(feedbackContainer);
+            }
+            
+            container.appendChild(botMsgContainer);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleFeedback(feedback, question, answer, messageContainer) {
+            const feedbackButtons = document.getElementById('feedback-buttons');
+            if (feedbackButtons) {
+                feedbackButtons.innerHTML = '<span style="color: #999; font-size: 12px;">Processing...</span>';
+            }
+            
+            fetch('/api/chatbot/feedback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    feedback: feedback,
+                    question: question,
+                    answer: answer
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (feedback === 'up') {
+                    // Show success message
+                    if (feedbackButtons) {
+                        feedbackButtons.innerHTML = `
+                            <span style="color: #4caf50; font-size: 12px;">
+                                ✓ ${data.message}
+                            </span>
+                        `;
+                    }
+                } else if (feedback === 'down' && data.new_reply) {
+                    // Replace with new response
+                    const oldMessage = document.getElementById('latest-bot-message');
+                    if (oldMessage) oldMessage.remove();
+                    
+                    const container = messageContainer.parentElement;
+                    displayBotMessage({
+                        reply: data.new_reply,
+                        needs_feedback: data.needs_feedback
+                    }, question, container);
+                }
+            })
+            .catch(error => {
+                console.error('Feedback error:', error);
+                if (feedbackButtons) {
+                    feedbackButtons.innerHTML = '<span style="color: #c62828; font-size: 12px;">Error processing feedback</span>';
+                }
+            });
+        }
+
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
         document.getElementById('chatInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
@@ -659,14 +747,15 @@ HTML_TEMPLATE = """
 </html>
 """
 
-print("Initializing rag...")
+
+print("Initializing RAG")
 rag = WomensHealthRAG(
     knowledge_base_path="./chat/data.csv",
-    # tinyllama fine-tuned responses took waayyyy too long
     generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned" 
 )
 print("=" * 60)
 
+# routes
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
@@ -687,48 +776,37 @@ def diet_tracker():
 def exercise_tracker():
     return {"status": "success", "message": "Exercise tracker endpoint"}
 
-# @app.route('/api/chatbot', methods=['POST'])
-# def chatbot():
-#     try:
-#         data = request.json
-#         user_msg = data.get("message", "")
-#         print(f"\n{'='*60}")
-#         print(f"User: {user_msg}")
-        
-#         if not user_msg:
-#             return jsonify({"reply": "Please enter a message."})
-        
-#         # Generate response using RAG
-#         reply = rag_system.generate_response(user_msg, top_k=3, verbose=True)
-        
-#         print(f"Assistant: {reply}")
-#         print(f"{'='*60}\n")
-        
-#         return jsonify({"reply": reply})
-        
-#     except Exception as e:
-#         print(f"Error in chatbot endpoint: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return jsonify({"reply": "Sorry, I encountered an error processing your message."}), 500
-
+# chat route :)
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
+    """Main chatbot endpoint with feedback support"""
     try:
         data = request.json
         user_msg = data.get("message", "")
         print(f"\n{'='*60}")
-        print(f"📩 User: {user_msg}")
+        print(f"User: {user_msg}")
         
         if not user_msg:
             return jsonify({"reply": "Please enter a message."})
         
-        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
+        # responses from csv data
+        response_data = rag.generate_response_simple(
+            user_msg,
+            top_k=3,
+            verbose=True,
+            similarity_threshold=0.5
+        )
         
-        print(f"Assistant: {reply}")
+        print(f"Assistant: {response_data['reply'][:100]}...")
+        print(f"Type: {response_data['response_type']}, Needs feedback: {response_data['needs_feedback']}")
         print(f"{'='*60}\n")
         
-        return jsonify({"reply": reply})
+        return jsonify({
+            'reply': response_data['reply'],
+            'needs_feedback': response_data['needs_feedback'],
+            'similarity': response_data['similarity'],
+            'response_type': response_data['response_type']
+        })
         
     except Exception as e:
         print(f"Error: {e}")
@@ -736,8 +814,70 @@ def chatbot():
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
 
+# feedback rt
+@app.route('/api/chatbot/feedback', methods=['POST'])
+def chatbot_feedback():
+    """Handle thumbs up/down feedback"""
+    try:
+        data = request.json
+        # is it a thumbs up or down <--
+        feedback = data.get('feedback')  
+        question = data.get('question')
+        answer = data.get('answer')
+        
+        print(f"\n{'='*60}")
+        print(f"Feedback: {feedback}")
+        print(f"Q: {question}")
+        print(f"A: {answer[:100]}...")
+        
+        if feedback == 'up':
+            # add thumbs up to data
+            success = rag.add_to_dataset(question, answer)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'Thank you! This response has been saved to improve future answers.'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to save feedback.'
+                }), 500
+                
+        elif feedback == 'down':
+            # get a new response if the original wasn't good 
+            print("Regenerating response...")
+            response_data = rag.generate_response_simple(
+                question,
+                top_k=3,
+                verbose=True,
+                similarity_threshold=0.5,
+                regenerate=True
+            )
+            
+            print(f"Regenerated: {response_data['reply'][:100]}...")
+            print(f"{'='*60}\n")
+            
+            return jsonify({
+                'success': True,
+                'new_reply': response_data['reply'],
+                'needs_feedback': response_data['needs_feedback'],
+                'message': 'Generated a new response. Does this help?'
+            })
+        
+        return jsonify({'success': False, 'message': 'Invalid feedback type'}), 400
+        
+    except Exception as e:
+        print(f"Error handling feedback: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred processing your feedback.'
+        }), 500
+
 if __name__ == '__main__':
     print("\nStarting Flask server on http://localhost:5001")
-    # print("Chat interface ready!")
+    print("Chat interface ready!")
     print("=" * 60)
     app.run(debug=True, host='0.0.0.0', port=5001)
