@@ -3,6 +3,7 @@
 # ^^ responses would be better with something like microsfot/phi2 or tinyllama
 # but not powerful enough computing resources locally for something like that 
 # chat/rag.py
+# chat/rag.py
 """
 RAG System - Dataset Only with Feedback System
 """

@@ -3080,9 +3080,9 @@ def exercise_tracker():
 #         traceback.print_exc()
 #         return jsonify({"reply": "Sorry, I encountered an error processing your message."}), 500
 
+
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
-    """Main chatbot endpoint with feedback support"""
     try:
         data = request.json
         user_msg = data.get("message", "")
@@ -3092,7 +3092,6 @@ def chatbot():
         if not user_msg:
             return jsonify({"reply": "Please enter a message."})
         
-        # responses from csv data
         response_data = rag.generate_response_simple(
             user_msg,
             top_k=3,
@@ -3112,10 +3111,68 @@ def chatbot():
         })
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
+
+@app.route('/api/chatbot/feedback', methods=['POST'])
+def chatbot_feedback():
+    """Handle thumbs up/down feedback"""
+    try:
+        data = request.json
+        feedback = data.get('feedback')  
+        question = data.get('question')
+        answer = data.get('answer')
+        
+        print(f"\n{'='*60}")
+        print(f"Feedback: {feedback}")
+        print(f"Q: {question}")
+        print(f"A: {answer[:100]}...")
+        
+        if feedback == 'up':
+            success = rag.add_to_dataset(question, answer)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'Thank you! This response has been saved to improve future answers.'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to save feedback.'
+                }), 500
+                
+        elif feedback == 'down':
+            print("🔄 Regenerating response...")
+            response_data = rag.generate_response_simple(
+                question,
+                top_k=3,
+                verbose=True,
+                similarity_threshold=0.5,
+                regenerate=True
+            )
+            
+            print(f"Regenerated: {response_data['reply'][:100]}...")
+            print(f"{'='*60}\n")
+            
+            return jsonify({
+                'success': True,
+                'new_reply': response_data['reply'],
+                'needs_feedback': response_data['needs_feedback'],
+                'message': 'Generated a new response. Does this help?'
+            })
+        
+        return jsonify({'success': False, 'message': 'Invalid feedback type'}), 400
+        
+    except Exception as e:
+        print(f"Error handling feedback: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred processing your feedback.'
+        }), 500
 
 if __name__ == '__main__':
     print("\nStarting Flask server on http://localhost:5001")
