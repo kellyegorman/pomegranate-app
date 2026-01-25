@@ -23,7 +23,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>(Name of our app) Women's Health Focused</title>
+    <title>Pomegranate - Women's Health App</title>
     <style>
         * {
             margin: 0;
@@ -841,7 +841,7 @@ HTML_TEMPLATE = """
         <header>
             <div class="header-content">
                 <div class="logo">
-                    <h1>name of our app</h1>
+                    <h1>Pomegranate</h1>
                 </div>
                 <nav>
                     <button class="nav-btn active" onclick="showSection('home')">Home</button>
@@ -858,32 +858,31 @@ HTML_TEMPLATE = """
             <!-- home  -->
             <section id="home" class="section active">
                 <div class="hero">
-                    <h2 class="hero-title">Welcome to app </h2>
+                    <h2 class="hero-title">Welcome to Pomegranate </h2>
                     <p class="hero-subtitle">
-                        Describe the app idk something something women's health
+                        96% of scientific knowledge, drug testing, and treatment guidelines are based on male biology.
                     </p>
+                    <p class="hero-subtitle">
+                        This app takes a holistic approach - helping women meet their health goals and live healthy lives.
+                     </p>
                 </div>
-
                 <div class="features-overview">
                     <div class="overview-card">
-                        <h3 class="overview-title">menstrual & repro health tracker</h3>
+                        <h3 class="overview-title">Menstrual & Reproductive Health</h3>
                         <p class="overview-text">
-                            Log cycle, track symptoms, keep health journal 
-                            Period tracking, reproductive health, menopause symptoms?
+                            Log period cycle, symptoms, moods, and notes to track patterns over time. Get insights into predicted periods, fertile windows, and ovulation days.
                         </p>
                     </div>
                     <div class="overview-card">
-                        <h3 class="overview-title">diet & exercise</h3>
+                        <h3 class="overview-title">Exercise & Nutrition</h3>
                         <p class="overview-text">
-                            set goals for health - diet, workout, fitness, nutrition ...
-                            Create personalized plans based on demographics (age, height, weight) and goals
-                            ex: weight loss, build muscle, focus on specific areas of body 
+                            Track fitness and nutrition to maintain a healthy lifestyle. Get personalized food recommendations and be alerted when unhealthy patterns are present. 
                         </p>
                     </div>
                     <div class="overview-card">
-                        <h3 class="overview-title">chat</h3>
+                        <h3 class="overview-title">Chat with Pommie</h3>
                         <p class="overview-text">
-                            get health advice, find local providers?
+                            Get information and advice surrounding women's health, or be redirected to helpful resources.
                         </p>
                     </div>
                 </div>
