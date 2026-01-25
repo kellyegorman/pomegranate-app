@@ -18,7 +18,6 @@ from chat.find_a_provider import ProviderSearcher
 app = Flask(__name__)
 
 
-# HTML Template (keeping your existing template)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1132,6 +1131,9 @@ HTML_TEMPLATE = """
             event.target.classList.add('active');
         }
 
+        // Global variable to track current message for feedback
+        let currentMessageData = null;
+
         function sendMessage() {
             const input = document.getElementById('chatInput');
             const messagesContainer = document.getElementById('chatMessages');
@@ -1147,7 +1149,6 @@ HTML_TEMPLATE = """
                 userMsg.textContent = message;
                 messagesContainer.appendChild(userMsg);
 
-                // Show loading indicator
                 const loadingMsg = document.createElement('div');
                 loadingMsg.id = 'loading-msg';
                 loadingMsg.style.cssText = 'background: #fff5f8; color: #999; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
@@ -1155,7 +1156,6 @@ HTML_TEMPLATE = """
                 messagesContainer.appendChild(loadingMsg);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-                // Call backend
                 fetch('/api/chatbot', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -1163,22 +1163,123 @@ HTML_TEMPLATE = """
                 })
                 .then(res => res.json())
                 .then(data => {
-                    // Remove loading message
                     const loading = document.getElementById('loading-msg');
                     if (loading) loading.remove();
                     
-                    const botMsg = document.createElement('div');
-                    botMsg.style.cssText = 'background: #fff5f8; color: #666; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ffd6e8;';
-                    botMsg.textContent = data.reply;
-                    messagesContainer.appendChild(botMsg);
+                    displayBotMessage(data, message, messagesContainer);
+                })
+                .catch(error => {
+                    const loading = document.getElementById('loading-msg');
+                    if (loading) loading.remove();
+                    
+                    console.error('Error:', error);
+                    const errorMsg = document.createElement('div');
+                    errorMsg.style.cssText = 'background: #ffebee; color: #c62828; padding: 12px 20px; border-radius: 18px; margin-bottom: 10px; max-width: 70%; border: 2px solid #ef9a9a;';
+                    errorMsg.textContent = 'Sorry, there was an error processing your message.';
+                    messagesContainer.appendChild(errorMsg);
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                }, 500);
-                
+                });
+
                 input.value = '';
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
         }
 
+        function displayBotMessage(data, question, container) {
+            const botMsgContainer = document.createElement('div');
+            botMsgContainer.style.cssText = 'max-width: 70%; margin-bottom: 10px;';
+            botMsgContainer.id = 'latest-bot-message';
+            
+            const botMsg = document.createElement('div');
+            botMsg.style.cssText = 'background: #fff5f8; color: #666; padding: 12px 20px; border-radius: 18px; border: 2px solid #ffd6e8;';
+            botMsg.textContent = data.reply;
+            botMsgContainer.appendChild(botMsg);
+            
+            // Add feedback buttons if needed
+            if (data.needs_feedback) {
+                const feedbackContainer = document.createElement('div');
+                feedbackContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 8px; align-items: center;';
+                feedbackContainer.id = 'feedback-buttons';
+                
+                const feedbackText = document.createElement('span');
+                feedbackText.style.cssText = 'color: #999; font-size: 12px;';
+                feedbackText.textContent = 'Was this helpful?';
+                feedbackContainer.appendChild(feedbackText);
+                
+                const thumbsUpBtn = document.createElement('button');
+                thumbsUpBtn.innerHTML = '👍';
+                thumbsUpBtn.style.cssText = 'background: white; border: 2px solid #ffd6e8; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 16px; transition: all 0.3s ease;';
+                thumbsUpBtn.onmouseover = () => thumbsUpBtn.style.background = '#e8f5e9';
+                thumbsUpBtn.onmouseout = () => thumbsUpBtn.style.background = 'white';
+                thumbsUpBtn.onclick = () => handleFeedback('up', question, data.reply, botMsgContainer);
+                
+                const thumbsDownBtn = document.createElement('button');
+                thumbsDownBtn.innerHTML = '👎';
+                thumbsDownBtn.style.cssText = 'background: white; border: 2px solid #ffd6e8; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 16px; transition: all 0.3s ease;';
+                thumbsDownBtn.onmouseover = () => thumbsDownBtn.style.background = '#ffebee';
+                thumbsDownBtn.onmouseout = () => thumbsDownBtn.style.background = 'white';
+                thumbsDownBtn.onclick = () => handleFeedback('down', question, data.reply, botMsgContainer);
+                
+                feedbackContainer.appendChild(thumbsUpBtn);
+                feedbackContainer.appendChild(thumbsDownBtn);
+                botMsgContainer.appendChild(feedbackContainer);
+            }
+            
+            container.appendChild(botMsgContainer);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleFeedback(feedback, question, answer, messageContainer) {
+            const feedbackButtons = document.getElementById('feedback-buttons');
+            if (feedbackButtons) {
+                feedbackButtons.innerHTML = '<span style="color: #999; font-size: 12px;">Processing...</span>';
+            }
+            
+            fetch('/api/chatbot/feedback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    feedback: feedback,
+                    question: question,
+                    answer: answer
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (feedback === 'up') {
+                    // Show success message
+                    if (feedbackButtons) {
+                        feedbackButtons.innerHTML = `
+                            <span style="color: #4caf50; font-size: 12px;">
+                                ✓ ${data.message}
+                            </span>
+                        `;
+                    }
+                } else if (feedback === 'down' && data.new_reply) {
+                    // Replace with new response
+                    const oldMessage = document.getElementById('latest-bot-message');
+                    if (oldMessage) oldMessage.remove();
+                    
+                    const container = messageContainer.parentElement;
+                    displayBotMessage({
+                        reply: data.new_reply,
+                        needs_feedback: data.needs_feedback
+                    }, question, container);
+                }
+            })
+            .catch(error => {
+                console.error('Feedback error:', error);
+                if (feedbackButtons) {
+                    feedbackButtons.innerHTML = '<span style="color: #c62828; font-size: 12px;">Error processing feedback</span>';
+                }
+            });
+        }
+
+        document.getElementById('chatInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
         document.getElementById('chatInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
@@ -1610,14 +1711,15 @@ print("Nutrition Engine ready!")
 provider_searcher = ProviderSearcher()
 print("=" * 60)
 
-print("Initializing rag...")
+
+print("Initializing RAG")
 rag = WomensHealthRAG(
     knowledge_base_path="./chat/data.csv",
-    # tinyllama fine-tuned responses took waayyyy too long
     generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned" 
 )
 print("=" * 60)
 
+# routes
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
@@ -1638,106 +1740,61 @@ def diet_tracker():
 def exercise_tracker():
     return {"status": "success", "message": "Exercise tracker endpoint"}
 
-@app.route('/api/nutrition/symptoms', methods=['GET', 'POST'])
-def get_symptoms():
-    """Get list of available symptoms to log based on life phase"""
-    life_phase = None
-    if request.method == 'POST' and request.json:
-        life_phase = request.json.get('life_phase')
-    
-    symptoms = engine.get_symptoms(life_phase)
-    return {
-        "status": "success",
-        "symptoms": symptoms,
-        "life_phase": life_phase,
-        "message": "Available symptoms for logging"
-    }
-
-@app.route('/api/nutrition/log', methods=['POST'])
-def log_symptom():
-    """Log a single symptom and get immediate recommendations"""
-    data = request.json
-    symptom = data.get('symptom')
-    
-    if not symptom:
-        return {"status": "error", "message": "Symptom is required"}, 400
-    
-    recommendation = engine.log_symptom(symptom)
-    
-    if not recommendation:
-        return {
-            "status": "error",
-            "message": f"Symptom '{symptom}' not found. Available symptoms: {engine.get_symptoms()}"
-        }, 404
-    
-    return {
-        "status": "success",
-        "data": recommendation
-    }
-
-@app.route('/api/nutrition/recommendations', methods=['POST'])
-def get_recommendations():
-    """Get personalized nutrition recommendations based on symptoms and phase"""
-    data = request.json
-    symptoms_list = data.get('symptoms', [])
-    cycle_phase = data.get('cycle_phase')
-    life_phase = data.get('life_phase')
-    
-    if not symptoms_list:
-        return {"status": "error", "message": "At least one symptom is required"}, 400
-    
-    recommendations = engine.get_recommendations(symptoms_list, cycle_phase, life_phase)
-    
-    # Add ingredient benefits to each recipe
-    from back.nutrition_engine import INGREDIENT_BENEFITS
-    for recipe in recommendations.get('recipes', []):
-        recipe['ingredients_with_benefits'] = [
-            {
-                'name': ing,
-                'benefit': INGREDIENT_BENEFITS.get(ing.lower(), 'Nutrient-rich ingredient supporting your wellness')
-            }
-            for ing in recipe['ingredients']
-        ]
-    
-    return {
-        "status": "success",
-        "data": recommendations
-    }
-
-@app.route('/api/nutrition/quick-snacks', methods=['POST'])
-def get_quick_snacks():
-    """Get quick 5-minute snack ideas for logged symptoms"""
-    data = request.json
-    symptoms_list = data.get('symptoms', [])
-    
-    if not symptoms_list:
-        return {"status": "error", "message": "At least one symptom is required"}, 400
-    
-    snacks = engine.get_quick_snacks(symptoms_list)
-    
-    return {
-        "status": "success",
-        "data": snacks,
-        "message": f"Found {len(snacks)} quick snack ideas"
-    }
+# @app.route('/api/chatbot', methods=['POST'])
+# def chatbot():
+#     try:
+#         data = request.json
+#         user_msg = data.get("message", "")
+#         print(f"\n{'='*60}")
+#         print(f"User: {user_msg}")
+        
+#         if not user_msg:
+#             return jsonify({"reply": "Please enter a message."})
+        
+#         # Generate response using RAG
+#         reply = rag_system.generate_response(user_msg, top_k=3, verbose=True)
+        
+#         print(f"Assistant: {reply}")
+#         print(f"{'='*60}\n")
+        
+#         return jsonify({"reply": reply})
+        
+#     except Exception as e:
+#         print(f"Error in chatbot endpoint: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"reply": "Sorry, I encountered an error processing your message."}), 500
 
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
+    """Main chatbot endpoint with feedback support"""
     try:
         data = request.json
         user_msg = data.get("message", "")
         print(f"\n{'='*60}")
-        print(f"📩 User: {user_msg}")
+        print(f"User: {user_msg}")
         
         if not user_msg:
             return jsonify({"reply": "Please enter a message."})
         
-        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
+        # responses from csv data
+        response_data = rag.generate_response_simple(
+            user_msg,
+            top_k=3,
+            verbose=True,
+            similarity_threshold=0.5
+        )
         
-        print(f"Assistant: {reply}")
+        print(f"Assistant: {response_data['reply'][:100]}...")
+        print(f"Type: {response_data['response_type']}, Needs feedback: {response_data['needs_feedback']}")
         print(f"{'='*60}\n")
         
-        return jsonify({"reply": reply})
+        return jsonify({
+            'reply': response_data['reply'],
+            'needs_feedback': response_data['needs_feedback'],
+            'similarity': response_data['similarity'],
+            'response_type': response_data['response_type']
+        })
         
     except Exception as e:
         print(f"Error: {e}")
@@ -1745,63 +1802,8 @@ def chatbot():
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
 
-@app.route('/api/providers/search', methods=['POST'])
-def search_providers():
-    """Search for healthcare providers by zipcode"""
-    try:
-        data = request.json
-        zipcode = data.get('zipcode', '').strip()
-        
-        if not zipcode or len(zipcode) != 5 or not zipcode.isdigit():
-            return jsonify({
-                'success': False,
-                'error': 'Please enter a valid 5-digit ZIP code'
-            }), 400
-        
-        print(f"Finding providers near {zipcode}")
-        
-        # Get coordinates from zipcode
-        coords = provider_searcher.get_coordinates_from_zipcode(zipcode)
-        
-        if not coords:
-            return jsonify({
-                'success': False,
-                'error': 'Could not find location for this ZIP code'
-            }), 404
-        
-        lat, lon = coords
-        print(f"📍 Coordinates: {lat}, {lon}")
-        
-        # Search for providers
-        providers = provider_searcher.search_providers_overpass(lat, lon, radius_km=25)
-        
-        # Add Planned Parenthood info
-        providers = provider_searcher.add_planned_parenthood_locations(providers)
-        
-        # Get mental health resources
-        mental_health = provider_searcher.get_mental_health_resources()
-        
-        print(f"✅ Found {len(providers)} providers")
-        
-        return jsonify({
-            'success': True,
-            'zipcode': zipcode,
-            'location': f"{lat}, {lon}",
-            'providers': providers[:20],  # Limit to 20 results
-            'mental_health_resources': mental_health
-        })
-        
-    except Exception as e:
-        print(f"Error searching providers: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': 'An error occurred while searching for providers'
-        }), 500
-
 if __name__ == '__main__':
     print("\nStarting Flask server on http://localhost:5001")
-    # print("Chat interface ready!")
+    print("Chat interface ready!")
     print("=" * 60)
     app.run(debug=True, host='0.0.0.0', port=5001)
