@@ -20,7 +20,7 @@ class WomensHealthRAG:
 
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.knowledge_base_path = knowledge_base_path
-        print(f"📱 Using device: {self.device}")
+        print(f"Using device: {self.device}")
         
         # csv data
         try:
@@ -32,7 +32,7 @@ class WomensHealthRAG:
                 engine='python'
             )
         except Exception as e:
-            print(f"⚠️ Error with strict parsing, trying lenient mode: {e}")
+            print(f"Error with strict parsing, trying lenient mode: {e}")
             self.kb = pd.read_csv(
                 knowledge_base_path,
                 on_bad_lines='skip',
@@ -48,7 +48,7 @@ class WomensHealthRAG:
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
         
         # embeddings
-        print("💾 Creating knowledge base embeddings...")
+        print("Creating knowledge base embeddings...")
         self.kb_embeddings = self.embedder.encode(
             self.kb['instruction'].tolist(),
             show_progress_bar=True,
@@ -56,7 +56,7 @@ class WomensHealthRAG:
         )
         
         # laod fine tuned distilgpt 
-        print(f"⚡ Loading fine-tuned DistilGPT2 from {generation_model_path}...")
+        print(f"Loading fine-tuned DistilGPT2 from {generation_model_path}...")
         
         if os.path.exists(generation_model_path):
             try:
@@ -74,14 +74,14 @@ class WomensHealthRAG:
                 )
                 self.gen_model.to(self.device)
                 self.gen_model.eval()
-                print("✅ Fine-tuned DistilGPT2 loaded successfully!")
+                print("Fine-tuned DistilGPT2 loaded successfully!")
                 self.using_finetuned = True
             except Exception as e:
-                print(f"⚠️ Could not load fine-tuned model: {e}")
+                print(f"Could not load fine-tuned model: {e}")
                 print("   Falling back to base DistilGPT2...")
                 self._load_base_model()
         else:
-            print(f"⚠️ Path {generation_model_path} not found")
+            print(f"Path {generation_model_path} not found")
             print("   Falling back to base DistilGPT2...")
             self._load_base_model()
         
