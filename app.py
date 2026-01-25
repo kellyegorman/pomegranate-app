@@ -13,7 +13,7 @@ from back.nutrition_engine import SymptomNutritionEngine
 from back.nutrition_api import nutrition_bp
 from chat.find_a_provider import ProviderSearcher
 from flask import Flask, render_template, render_template_string, request, jsonify
-
+import time
 
 app = Flask(__name__)
 
@@ -1486,6 +1486,14 @@ HTML_TEMPLATE = """
             }
         }
     </style>
+    <!-- Tailwind CDN for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body { overflow-x: hidden; }
+        img, video, iframe { max-width: 100%; height: auto; }
+        .main-content { overflow: hidden; }
+    </style>
+
 </head>
 <body>
     <div class="container">
@@ -4210,6 +4218,39 @@ def exercise_page():
     except Exception:
         # fallback: simple JSON response if file missing
         return {"status": "error", "message": "Exercise page not found"}, 500
+
+@app.route('/api/model/status', methods=['GET'])
+def model_status():
+    """Return whether a local model is available and where it's loaded from."""
+    try:
+        from chat.rag import get_rag
+        rag = get_rag()
+        loaded = rag.is_ready()
+        return {"status": "success", "model_loaded": bool(loaded), "local_path": getattr(rag, 'model_path', None)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.route('/api/model/generate', methods=['POST'])
+def model_generate():
+    """Generate text with local model (if available). POST JSON { prompt: "..." }"""
+    try:
+        from flask import request
+        payload = request.get_json() or {}
+        prompt = payload.get('prompt') or payload.get('message') or ''
+    except Exception:
+        prompt = ''
+
+    try:
+        from chat.rag import get_rag
+        rag = get_rag()
+        ok = rag.load()
+        if not ok:
+            return {"status": "error", "message": "Model not available locally. Install transformers/torch or set LOCAL_LLM_PATH."}
+        out = rag.generate(prompt)
+        return {"status": "success", "output": out}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # @app.route('/api/chatbot', methods=['POST'])
