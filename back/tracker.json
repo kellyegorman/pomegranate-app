@@ -1,0 +1,46 @@
+{
+    "menstrual": {
+        "title": "Menstrual Phase",
+        "day_range": "Days 1-5",
+        "summary": "A natural reset focused on rest, reflection, and restoration.",
+        "what_is_happening": "Hormones are at their lowest, allowing the body to release the previous cycle and conserve energy. This is a time when slowing down supports physical and emotional recovery.",
+        "traits": {
+          "physical": "Low energy, need for rest, gentle movement feels best",
+          "emotional": "More sensitive, craving comfort and quiet",
+          "mental": "Introspective, intuitive, less outward-focused"
+        }
+    },
+    "follicular": {
+        "title": "Follicular Phase",
+        "day_range": "Days 6-13",
+        "summary": "A phase of fresh energy, growth, and new beginnings.",
+        "what_is_happening": "Estrogen rises as the body prepares for ovulation. Energy, curiosity, and motivation naturally increase, making this a great time to start new projects.",
+        "traits": {
+          "physical": "Lightness, increasing energy, easier movement",
+          "emotional": "Hopeful, inspired, open to new ideas",
+          "mental": "Creative, focused, good for learning and planning"
+        }
+    },
+    "ovulation": {
+        "title": "Ovulation",
+        "day_range": "Days 14-16",
+        "summary": "The most outward-facing and expressive phase of the cycle.",
+        "what_is_happening": "With estrogen at its peak, the body is primed for connection, confidence, and communication. Energy and presence tend to be at their highest.",
+        "traits": {
+          "physical": "Strong, energized, increased vitality",
+          "emotional": "Confident, social, expressive",
+          "mental": "Clear communication, quick thinking, decisive"
+        }
+    },
+    "luteal" : {
+        "title": "Luteal Phase",
+        "day_range": "Days 17-28",
+        "summary": "A gradual shift inward toward completion and self-care.",
+        "what_is_happening": "Progesterone rises and then slowly falls if pregnancy does not occur. The body begins to slow down, signaling a need for boundaries, nourishment, and closure.",
+        "traits": {
+          "physical": "Slowing energy, cravings, need for grounding routines",
+          "emotional": "More inward, easily overstimulated, craving calm",
+          "mental": "Detail-oriented, reflective, focused on finishing tasks"
+        }
+    }
+}
