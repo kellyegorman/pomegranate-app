@@ -2,6 +2,10 @@
 # if there is no very similar q&a in dataset, generate using distilgpt2 fine-tuned
 # ^^ responses would be better with something like microsfot/phi2 or tinyllama
 # but not powerful enough computing resources locally for something like that 
+# chat/rag.py
+"""
+RAG System - Dataset Only with Feedback System
+"""
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -18,10 +22,10 @@ class WomensHealthRAG:
         """Initialize RAG system with feedback capabilities"""
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.knowledge_base_path = knowledge_base_path
-        print(f"Using device: {self.device}")
+        print(f"📱 Using device: {self.device}")
         
         # Load knowledge base with robust CSV parsing
-        print("Loading knowledge base...")
+        print("📚 Loading knowledge base...")
         try:
             self.kb = pd.read_csv(
                 knowledge_base_path,
@@ -44,11 +48,11 @@ class WomensHealthRAG:
         print(f"   Loaded {len(self.kb)} Q&A pairs")
         
         # Load embedding model
-        print("Loading embedding model...")
+        print("🔍 Loading embedding model...")
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
         
         # Create embeddings
-        print("Creating knowledge base embeddings...")
+        print("💾 Creating knowledge base embeddings...")
         self.kb_embeddings = self.embedder.encode(
             self.kb['instruction'].tolist(),
             show_progress_bar=True,
@@ -74,7 +78,7 @@ class WomensHealthRAG:
                 )
                 self.gen_model.to(self.device)
                 self.gen_model.eval()
-                print("Fine-tuned DistilGPT2 loaded successfully!")
+                print("✅ Fine-tuned DistilGPT2 loaded successfully!")
                 self.using_finetuned = True
             except Exception as e:
                 print(f"⚠️ Could not load fine-tuned model: {e}")
@@ -85,7 +89,7 @@ class WomensHealthRAG:
             print("   Falling back to base DistilGPT2...")
             self._load_base_model()
         
-        print("RAG system ready!\n")
+        print("✅ RAG system ready!\n")
     
     def _load_base_model(self):
         """Load base DistilGPT2 as fallback"""
@@ -134,10 +138,10 @@ class WomensHealthRAG:
         max_similarity = context[0]['similarity']
         
         if verbose:
-            print(f"Retrieved {len(context)} relevant examples:")
+            print(f"🔍 Retrieved {len(context)} relevant examples:")
             for i, ctx in enumerate(context, 1):
                 print(f"   {i}. {ctx['question'][:50]}... (similarity: {ctx['similarity']:.3f})")
-            print(f"Max similarity: {max_similarity:.3f}")
+            print(f"📊 Max similarity: {max_similarity:.3f}")
         
         # Strategy 1: High similarity - use direct answer
         if max_similarity > 0.75:
@@ -211,7 +215,7 @@ class WomensHealthRAG:
             reply = reply.split("\n\n")[0].strip()
             
             if verbose:
-                print(f"Generated: {reply[:100]}...")
+                print(f"💬 Generated: {reply[:100]}...")
             
             if reply and len(reply) > 20:
                 return {
@@ -233,7 +237,7 @@ class WomensHealthRAG:
         
         # Strategy 3: Low similarity - resources message
         if verbose:
-            print("Low similarity - providing Resources tab message")
+            print("ℹ️ Low similarity - providing Resources tab message")
         
         return {
             'reply': "I'm sorry, I can't provide an answer to that. Please see the resources tab for more information!",
@@ -259,10 +263,10 @@ class WomensHealthRAG:
             new_embedding = self.embedder.encode([question.strip()])
             self.kb_embeddings = np.vstack([self.kb_embeddings, new_embedding])
             
-            print(f"Added to dataset: {question[:50]}...")
+            print(f"✅ Added to dataset: {question[:50]}...")
             return True
         except Exception as e:
-            print(f"Error adding to dataset: {e}")
+            print(f"❌ Error adding to dataset: {e}")
             return False
     
     def reload_dataset(self):
@@ -272,8 +276,8 @@ class WomensHealthRAG:
             self.kb.columns = [c.strip().lower().replace("\ufeff", "") for c in self.kb.columns]
             self.kb = self.kb.dropna(subset=['instruction', 'output'])
             self.kb_embeddings = self.embedder.encode(self.kb['instruction'].tolist(), batch_size=32)
-            print(f"Dataset reloaded: {len(self.kb)} Q&A pairs")
+            print(f"🔄 Dataset reloaded: {len(self.kb)} Q&A pairs")
             return True
         except Exception as e:
-            print(f"Error reloading dataset: {e}")
+            print(f"❌ Error reloading dataset: {e}")
             return False
