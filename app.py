@@ -3111,7 +3111,7 @@ def chatbot():
         })
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
@@ -3144,7 +3144,7 @@ def chatbot_feedback():
                 }), 500
                 
         elif feedback == 'down':
-            print("🔄 Regenerating response...")
+            print("Regenerating response")
             response_data = rag.generate_response_simple(
                 question,
                 top_k=3,
@@ -3160,7 +3160,7 @@ def chatbot_feedback():
                 'success': True,
                 'new_reply': response_data['reply'],
                 'needs_feedback': response_data['needs_feedback'],
-                'message': 'Generated a new response. Does this help?'
+                'message': 'Generated a new response. Is this better?'
             })
         
         return jsonify({'success': False, 'message': 'Invalid feedback type'}), 400
