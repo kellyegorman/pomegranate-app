@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Exercises — Single Page</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html,body{height:100%;margin:0}
+        .pill{display:inline-flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:999px;border:1px solid #fde8ef;background:#fff}
+    </style>
+</head>
+<body class="bg-pink-50 min-h-screen flex items-start py-12">
+    <div class="mx-auto w-full max-w-3xl bg-white rounded-xl shadow-md p-6">
+        <h1 class="text-2xl font-bold text-pink-600 mb-4">Diet & Exercise — Self-contained Page</h1>
+
+        <section id="body-info" class="mb-6">
+            <h2 class="font-semibold text-pink-500">Body Info</h2>
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input id="age" type="number" placeholder="Age" class="p-2 border rounded" />
+                <div class="flex gap-2">
+                    <input id="height_ft" type="number" placeholder="ft" class="p-2 border rounded w-1/2" />
+                    <input id="height_in" type="number" placeholder="in" class="p-2 border rounded w-1/2" />
+                </div>
+                <input id="weight_lbs" type="number" placeholder="Weight (lbs)" class="p-2 border rounded" />
+            </div>
+            <div class="mt-3 flex gap-2">
+                <button id="saveBody" class="px-4 py-2 bg-pink-400 text-white rounded">Save</button>
+                <button id="recommend" class="px-4 py-2 bg-pink-600 text-white rounded">Get Recommendations</button>
+            </div>
+        </section>
+
+        <section id="custom-exercises" class="mb-6">
+            <h2 class="font-semibold text-pink-500">My Exercises</h2>
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input id="ex_name" placeholder="Exercise name" class="p-2 border rounded" />
+                <input id="ex_targets" placeholder="Targets (comma-separated)" class="p-2 border rounded" />
+                <button id="addEx" class="px-4 py-2 bg-pink-400 text-white rounded">Add</button>
+            </div>
+            <div id="ex_list" class="mt-3 space-y-2"></div>
+        </section>
+
+        <section id="recommendations" class="mb-2">
+            <h2 class="font-semibold text-pink-500">Recommendations</h2>
+            <div id="recs" class="mt-3 text-sm text-gray-700"></div>
+        </section>
+    </div>
+
+<script>
+    // Keep all exercise logic client-side. Persist in localStorage and call backend
+    // only for LLM-style recommendations via /api/fitness/llm_recommend.
+    const saveBody = () => {
+        const body = {
+            age: Number(document.getElementById('age').value)||null,
+            height_ft: Number(document.getElementById('height_ft').value)||0,
+            height_in: Number(document.getElementById('height_in').value)||0,
+            weight_lbs: Number(document.getElementById('weight_lbs').value)||null
+        };
+        const height_cm = body.height_ft*30.48 + body.height_in*2.54;
+        body.height_cm = Math.round(height_cm*10)/10;
+        body.weight_kg = body.weight_lbs ? Math.round(body.weight_lbs*0.45359237*10)/10 : null;
+        localStorage.setItem('exercise_body', JSON.stringify(body));
+        alert('Saved locally');
+    };
+
+    const loadBody = () => {
+        const b = JSON.parse(localStorage.getItem('exercise_body')||'{}');
+        if(!b) return;
+        if(b.age) document.getElementById('age').value = b.age;
+        if(b.height_ft !== undefined) document.getElementById('height_ft').value = b.height_ft;
+        if(b.height_in !== undefined) document.getElementById('height_in').value = b.height_in;
+        if(b.weight_lbs !== undefined) document.getElementById('weight_lbs').value = b.weight_lbs;
+    };
+
+    const renderExercises = () => {
+        const list = JSON.parse(localStorage.getItem('exercise_list')||'[]');
+        const container = document.getElementById('ex_list');
+        container.innerHTML = '';
+        list.forEach((e, i) => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center justify-between gap-2 p-2 border rounded';
+            div.innerHTML = `<div><strong>${e.name}</strong><div class="text-xs text-gray-600">${e.targets}</div></div><button data-i="${i}" class="px-2 py-1 text-sm bg-red-100 rounded">Delete</button>`;
+            container.appendChild(div);
+        });
+        container.querySelectorAll('button[data-i]').forEach(btn=>btn.addEventListener('click', ev=>{
+            const i = Number(btn.getAttribute('data-i'));
+            const arr = JSON.parse(localStorage.getItem('exercise_list')||'[]'); arr.splice(i,1); localStorage.setItem('exercise_list', JSON.stringify(arr)); renderExercises();
+        }));
+    };
+
+    document.getElementById('saveBody').addEventListener('click', saveBody);
+    document.getElementById('addEx').addEventListener('click', ()=>{
+        const name = document.getElementById('ex_name').value.trim();
+        const targets = document.getElementById('ex_targets').value.trim();
+        if(!name) return alert('Provide name');
+        const arr = JSON.parse(localStorage.getItem('exercise_list')||'[]');
+        arr.unshift({name, targets});
+        localStorage.setItem('exercise_list', JSON.stringify(arr));
+        document.getElementById('ex_name').value=''; document.getElementById('ex_targets').value=''; renderExercises();
+    });
+
+    document.getElementById('recommend').addEventListener('click', async ()=>{
+        const body = JSON.parse(localStorage.getItem('exercise_body')||'{}');
+        const customs = JSON.parse(localStorage.getItem('exercise_list')||'[]');
+        const payload = { age: body.age||null, height_cm: body.height_cm||null, weight_kg: body.weight_kg||null, custom_exercises: customs };
+        const out = document.getElementById('recs'); out.textContent = 'Loading...';
+        try{
+            const resp = await fetch('/api/fitness/llm_recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+            const data = await resp.json();
+            if(!data || data.status !== 'success'){ out.textContent = 'No recommendations'; return; }
+            const recs = data.recommendations || data.exercises || [];
+            out.innerHTML = recs.map(r=>`<div class="p-2 border rounded mb-2"><strong>${r.name}</strong><div class="text-xs text-gray-600">${r.description||''}</div><div class="text-xs text-gray-500">${r.prescription? JSON.stringify(r.prescription):''}</div></div>`).join('');
+        }catch(err){ out.textContent = 'Error fetching'; }
+    });
+
+    // initialize
+    loadBody(); renderExercises();
+</script>
+</html>
