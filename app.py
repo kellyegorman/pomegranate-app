@@ -297,6 +297,18 @@ HTML_TEMPLATE = """
 
         .cycle-phase-selector {
             margin: 20px 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            max-height: 200px;
+            overflow: hidden;
+        }
+
+        .cycle-phase-selector.hidden {
+            opacity: 0;
+            max-height: 0;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
         }
 
         .cycle-phase-selector label {
@@ -315,12 +327,27 @@ HTML_TEMPLATE = """
             color: #666;
             background: white;
             cursor: pointer;
-            transition: border-color 0.3s ease;
+            transition: all 0.3s ease;
         }
 
         .cycle-phase-select:focus {
             outline: none;
             border-color: #ff9dbf;
+            box-shadow: 0 0 0 3px rgba(255, 157, 191, 0.1);
+        }
+
+        .symptom-grid {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .symptom-grid.hidden {
+            opacity: 0;
+            visibility: hidden;
+            max-height: 0;
+            margin: 0;
+            overflow: hidden;
         }
 
         .recommendation-btn {
@@ -1789,12 +1816,12 @@ HTML_TEMPLATE = """
                                 <input type="number" id="age" placeholder="Enter age" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                             </div>
                             <div>
-                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Height (cm)</label>
-                                <input type="number" id="height_cm" placeholder="Enter height" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Height (feet)</label>
+                                <input type="number" step="0.1" id="height_ft" placeholder="e.g., 5.5" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                             </div>
                             <div>
-                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Weight (kg)</label>
-                                <input type="number" id="weight_kg" placeholder="Enter weight" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Weight (lbs)</label>
+                                <input type="number" id="weight_lbs" placeholder="Enter weight" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                             </div>
                             <div>
                                 <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Body Type</label>
@@ -1821,7 +1848,7 @@ HTML_TEMPLATE = """
                                 <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Target (optional)</label>
                                 <input type="text" id="goalTarget" placeholder="e.g., 3x per week" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                             </div>
-                            <button onclick="addGoal()" style="background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; padding: 10px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">Add Goal</button>
+                            <button onclick="saveOrUpdateGoal()" style="background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; padding: 10px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">Add Goal</button>
                         </div>
                         <div id="myGoalsList" style="margin-top: 20px;">
                             <!-- Goals will appear here -->
@@ -1866,6 +1893,13 @@ HTML_TEMPLATE = """
                     <p style="color: #666; margin-bottom: 15px;">
                         Honor what your body is telling you. Log your symptoms and receive evidence-informed, personalized food recommendations tailored to your menstrual cycle or menopausal phase.
                     </p>
+
+                    <!-- Mode Indicator -->
+                    <div id="nutritionModeIndicator" style="background: linear-gradient(135deg, #ffe5f0 0%, #fff0f5 100%); padding: 15px 20px; border-radius: 10px; border-left: 4px solid #ff9dbf; margin-bottom: 20px; display: none;">
+                        <p style="color: #666; margin: 0; font-size: 14px;">
+                            <strong id="modeText"></strong>
+                        </p>
+                    </div>
 
                     <div class="symptom-logger">
                         <h3 style="color: #ff9dbf; margin-bottom: 15px;">What are you experiencing?</h3>
@@ -2053,8 +2087,8 @@ HTML_TEMPLATE = """
             const goalsLocal = goals.slice();
             const payload = {
                 age: Number(body.age) || null,
-                height_cm: Number(body.height_cm) || null,
-                weight_kg: Number(body.weight_kg) || null,
+                height_ft: Number(body.height_ft) || null,
+                weight_lbs: Number(body.weight_lbs) || null,
                 bodyType: body.bodyType || '',
                 chars: body.chars || {},
                 endGoal: localStorage.getItem('endGoal') || '',
@@ -2324,8 +2358,8 @@ HTML_TEMPLATE = """
                 try {
                     const payload = {
                         age: Number(body.age)||null,
-                        height_cm: Number(body.height_cm)||null,
-                        weight_kg: Number(body.weight_kg)||null,
+                        height_ft: Number(body.height_ft)||null,
+                        weight_lbs: Number(body.weight_lbs)||null,
                         bodyType: body.bodyType||'',
                         chars: body.chars||{},
                         endGoal: localStorage.getItem('endGoal')||'',
@@ -2437,10 +2471,51 @@ HTML_TEMPLATE = """
 
         let selectedSymptoms = [];
 
+        /**
+         * Helper function to clear all recommendations and snacks
+         * Used when switching between menstrual and menopausal modes
+         */
+        function clearNutritionRecommendations() {
+            const recommendationsContainer = document.getElementById('recommendationsContainer');
+            const snacksContainer = document.getElementById('snacksContainer');
+            
+            if (recommendationsContainer) {
+                recommendationsContainer.classList.remove('active');
+                recommendationsContainer.innerHTML = '';
+            }
+            if (snacksContainer) {
+                snacksContainer.classList.remove('active');
+                snacksContainer.innerHTML = '';
+            }
+        }
+
+        /**
+         * Helper function to update the mode indicator
+         * Shows the user which mode they're currently in (Menstrual or Menopausal)
+         */
+        function updateNutritionModeIndicator(lifePhase) {
+            const indicator = document.getElementById('nutritionModeIndicator');
+            const modeText = document.getElementById('modeText');
+            
+            if (!indicator || !modeText) return;
+            
+            if (lifePhase) {
+                // Menopausal mode
+                const phaseDisplay = lifePhase.charAt(0).toUpperCase() + lifePhase.slice(1);
+                modeText.textContent = `✨ Showing recommendations for ${phaseDisplay}`;
+                indicator.style.display = 'block';
+            } else {
+                // Menstrual cycle mode
+                modeText.textContent = '🩸 Showing recommendations for menstrual cycle phase';
+                indicator.style.display = 'block';
+            }
+        }
+
         async function initializeNutritionSection(lifePhase = null) {
             try {
                 let response;
                 if (lifePhase) {
+                    // Menopausal phase selected
                     response = await fetch('/api/nutrition/symptoms', {
                         method: 'POST',
                         headers: {
@@ -2449,24 +2524,39 @@ HTML_TEMPLATE = """
                         body: JSON.stringify({ life_phase: lifePhase })
                     });
                 } else {
+                    // Menstrual cycle phase or default
                     response = await fetch('/api/nutrition/symptoms');
                 }
                 
                 const data = await response.json();
                 const symptoms = data.symptoms;
                 const grid = document.getElementById('symptomGrid');
-                grid.innerHTML = '';
                 
-                // Clear selected symptoms when changing life phase
-                selectedSymptoms = [];
+                // Fade out current symptoms
+                grid.classList.add('hidden');
+                
+                // Wait for transition to complete before updating content
+                setTimeout(() => {
+                    grid.innerHTML = '';
+                    
+                    // Clear all previously selected symptoms when changing phases
+                    selectedSymptoms = [];
 
-                symptoms.forEach(symptom => {
-                    const btn = document.createElement('button');
-                    btn.className = 'symptom-btn';
-                    btn.textContent = symptom.charAt(0).toUpperCase() + symptom.slice(1).replace('_', ' ');
-                    btn.onclick = () => toggleSymptom(symptom, btn);
-                    grid.appendChild(btn);
-                });
+                    symptoms.forEach(symptom => {
+                        const btn = document.createElement('button');
+                        btn.className = 'symptom-btn';
+                        btn.textContent = symptom.charAt(0).toUpperCase() + symptom.slice(1).replace('_', ' ');
+                        btn.onclick = () => toggleSymptom(symptom, btn);
+                        grid.appendChild(btn);
+                    });
+                    
+                    // Fade in new symptoms
+                    grid.classList.remove('hidden');
+                    
+                    // Update mode indicator
+                    updateNutritionModeIndicator(lifePhase);
+                }, 200);
+                
             } catch (error) {
                 console.error('Error loading symptoms:', error);
             }
@@ -2716,8 +2806,8 @@ HTML_TEMPLATE = """
             // Load saved body info
             const bodyInfo = JSON.parse(localStorage.getItem('bodyInfo') || '{}');
             if (bodyInfo.age) document.getElementById('age').value = bodyInfo.age;
-            if (bodyInfo.height_cm) document.getElementById('height_cm').value = bodyInfo.height_cm;
-            if (bodyInfo.weight_kg) document.getElementById('weight_kg').value = bodyInfo.weight_kg;
+            if (bodyInfo.height_ft) document.getElementById('height_ft').value = bodyInfo.height_ft;
+            if (bodyInfo.weight_lbs) document.getElementById('weight_lbs').value = bodyInfo.weight_lbs;
             if (bodyInfo.bodyType) document.getElementById('bodyType').value = bodyInfo.bodyType;
             
             // Update all display sections
@@ -2733,42 +2823,115 @@ HTML_TEMPLATE = """
             
             // Listen for life phase changes to reload appropriate symptoms
             const lifePhaseSelect = document.getElementById('lifePhaseSelect');
+            const cyclePhaseSelect = document.getElementById('cyclePhaseSelect');
+            
+            /**
+             * Handle menopausal phase selection
+             * When a menopausal stage is selected:
+             * - Hide the menstrual cycle dropdown
+             * - Load menopausal symptoms
+             * - Clear previous selections
+             */
             if (lifePhaseSelect) {
                 lifePhaseSelect.addEventListener('change', function() {
                     const selectedLifePhase = this.value;
-                    initializeNutritionSection(selectedLifePhase || null);
                     
-                    // Clear previous recommendations and snacks
-                    const recommendationsContainer = document.getElementById('recommendationsContainer');
-                    const snacksContainer = document.getElementById('snacksContainer');
-                    recommendationsContainer.classList.remove('active');
-                    recommendationsContainer.innerHTML = '';
-                    snacksContainer.classList.remove('active');
-                    snacksContainer.innerHTML = '';
+                    // Get references to the dropdown containers
+                    const allSelectors = document.querySelectorAll('.cycle-phase-selector');
+                    let cyclePhaseDiv = null;
+                    let lifePhaseDiv = null;
                     
-                    // Hide/show cycle phase selector based on life phase
-                    const cyclePhaseSelectElement = document.getElementById('cyclePhaseSelect');
-                    const cyclePhaseDiv = cyclePhaseSelectElement.closest('.cycle-phase-selector');
+                    // Find each selector container
+                    allSelectors.forEach(selector => {
+                        if (selector.contains(cyclePhaseSelect)) {
+                            cyclePhaseDiv = selector;
+                        }
+                        if (selector.contains(lifePhaseSelect)) {
+                            lifePhaseDiv = selector;
+                        }
+                    });
+                    
                     if (selectedLifePhase) {
-                        cyclePhaseDiv.style.display = 'none';
-                        cyclePhaseSelectElement.value = '';
+                        // User selected a menopausal phase (perimenopause, menopause, or post-menopause)
+                        // Hide menstrual cycle dropdown with smooth transition
+                        if (cyclePhaseDiv) {
+                            cyclePhaseDiv.classList.add('hidden');
+                        }
+                        // Clear cycle phase value
+                        if (cyclePhaseSelect) {
+                            cyclePhaseSelect.value = '';
+                        }
+                        
+                        // Load menopausal symptoms
+                        initializeNutritionSection(selectedLifePhase);
                     } else {
-                        cyclePhaseDiv.style.display = 'block';
+                        // User selected "Not applicable"
+                        // Show menstrual cycle dropdown with smooth transition
+                        if (cyclePhaseDiv) {
+                            cyclePhaseDiv.classList.remove('hidden');
+                        }
+                        
+                        // Load default (menstrual) symptoms
+                        initializeNutritionSection(null);
                     }
+                    
+                    // Clear previous recommendations and snacks to avoid mixed content
+                    clearNutritionRecommendations();
                 });
             }
             
-            // Listen for cycle phase changes to clear recommendations
-            const cyclePhaseSelect = document.getElementById('cyclePhaseSelect');
+            /**
+             * Handle menstrual cycle phase selection
+             * When a menstrual cycle phase is selected:
+             * - Hide the life phase dropdown
+             * - Load menstrual symptoms
+             * - Clear previous selections
+             */
             if (cyclePhaseSelect) {
                 cyclePhaseSelect.addEventListener('change', function() {
-                    // Clear previous recommendations and snacks
-                    const recommendationsContainer = document.getElementById('recommendationsContainer');
-                    const snacksContainer = document.getElementById('snacksContainer');
-                    recommendationsContainer.classList.remove('active');
-                    recommendationsContainer.innerHTML = '';
-                    snacksContainer.classList.remove('active');
-                    snacksContainer.innerHTML = '';
+                    const selectedCyclePhase = this.value;
+                    
+                    // Get references to the dropdown containers
+                    const allSelectors = document.querySelectorAll('.cycle-phase-selector');
+                    let cyclePhaseDiv = null;
+                    let lifePhaseDiv = null;
+                    
+                    // Find each selector container
+                    allSelectors.forEach(selector => {
+                        if (selector.contains(cyclePhaseSelect)) {
+                            cyclePhaseDiv = selector;
+                        }
+                        if (selector.contains(lifePhaseSelect)) {
+                            lifePhaseDiv = selector;
+                        }
+                    });
+                    
+                    if (selectedCyclePhase) {
+                        // User selected a menstrual cycle phase
+                        // Hide life phase dropdown with smooth transition
+                        if (lifePhaseDiv) {
+                            lifePhaseDiv.classList.add('hidden');
+                        }
+                        // Clear life phase value
+                        if (lifePhaseSelect) {
+                            lifePhaseSelect.value = '';
+                        }
+                        
+                        // Load menstrual symptoms
+                        initializeNutritionSection(null);
+                    } else {
+                        // User selected "Not tracking cycle phase"
+                        // Show life phase dropdown with smooth transition
+                        if (lifePhaseDiv) {
+                            lifePhaseDiv.classList.remove('hidden');
+                        }
+                        
+                        // Load default symptoms
+                        initializeNutritionSection(null);
+                    }
+                    
+                    // Clear previous recommendations and snacks to avoid mixed content
+                    clearNutritionRecommendations();
                 });
             }
         });
@@ -3585,14 +3748,14 @@ window.addEventListener('click', event => {
 
         function saveBodyInfo() {
             const age = document.getElementById('age').value || '';
-            const height_cm = Number(document.getElementById('height_cm').value || 0);
-            const weight_kg = Number(document.getElementById('weight_kg').value || 0);
+            const height_ft = Number(document.getElementById('height_ft').value || 0);
+            const weight_lbs = Number(document.getElementById('weight_lbs').value || 0);
             const bodyType = document.getElementById('bodyType').value || '';
             
             const info = {
                 age: age,
-                height_cm: height_cm,
-                weight_kg: weight_kg,
+                height_ft: height_ft,
+                weight_lbs: weight_lbs,
                 bodyType: bodyType,
                 chars: {}
             };
@@ -3613,7 +3776,7 @@ window.addEventListener('click', event => {
             const summaryDiv = document.getElementById('personalSummary');
             const summaryContent = document.getElementById('summaryContent');
             
-            if (!bodyInfo.age && !bodyInfo.height_cm && !bodyInfo.weight_kg) {
+            if (!bodyInfo.age && !bodyInfo.height_ft && !bodyInfo.weight_lbs) {
                 summaryDiv.style.display = 'none';
                 return;
             }
@@ -3627,16 +3790,16 @@ window.addEventListener('click', event => {
                     <div style="color: #666; font-size: 13px; margin-top: 5px;">years old</div>
                 </div>`;
             }
-            if (bodyInfo.height_cm) {
+            if (bodyInfo.height_ft) {
                 html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.height_cm}</div>
-                    <div style="color: #666; font-size: 13px; margin-top: 5px;">cm tall</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.height_ft}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">feet tall</div>
                 </div>`;
             }
-            if (bodyInfo.weight_kg) {
+            if (bodyInfo.weight_lbs) {
                 html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.weight_kg}</div>
-                    <div style="color: #666; font-size: 13px; margin-top: 5px;">kg</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.weight_lbs}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">lbs</div>
                 </div>`;
             }
             if (bodyInfo.bodyType) {
@@ -3785,6 +3948,24 @@ window.addEventListener('click', event => {
                     row.style.borderBottom = '1px solid #f7edf2';
                     const text = document.createElement('div');
                     text.textContent = `${g.name}${g.target ? ' — ' + g.target + ' min' : ''}`;
+                    
+                    // Edit button
+                    const edit = document.createElement('button');
+                    edit.className = 'sym-pill';
+                    edit.style.padding = '6px 10px';
+                    edit.style.background = '#e3f2fd';
+                    edit.style.color = '#0284c7';
+                    edit.style.border = '1px solid #bae6fd';
+                    edit.style.borderRadius = '999px';
+                    edit.style.cursor = 'pointer';
+                    edit.style.fontSize = '14px';
+                    edit.style.marginRight = '8px';
+                    edit.title = 'Edit goal';
+                    edit.setAttribute('aria-label','Edit goal');
+                    edit.textContent = '✏️ Edit';
+                    edit.onclick = () => { editGoal(idx, g); };
+                    
+                    // Delete button
                     const del = document.createElement('button');
                     del.className = 'sym-pill';
                     del.style.padding = '6px 10px';
@@ -3798,14 +3979,85 @@ window.addEventListener('click', event => {
                     del.setAttribute('aria-label','Delete goal');
                     del.textContent = '✖';
                     del.onclick = () => { removeGoal(idx); };
+                    
+                    const actions = document.createElement('div');
+                    actions.style.display = 'flex';
+                    actions.style.gap = '4px';
+                    actions.appendChild(edit);
+                    actions.appendChild(del);
+                    
                     row.appendChild(text);
-                    row.appendChild(del);
+                    row.appendChild(actions);
                     my.appendChild(row);
                 });
             }
             
             // Update the goals display section
             updateGoalsDisplay();
+        }
+
+        function editGoal(idx, goal) {
+            // Populate edit form with current goal values
+            document.getElementById('goalName').value = goal.name || '';
+            document.getElementById('goalTarget').value = goal.target || '';
+            
+            // Store the index being edited
+            window.editingGoalIndex = idx;
+            
+            // Change button text to indicate editing mode
+            const addBtn = document.querySelector('button[onclick="addGoal()"]');
+            if (addBtn) {
+                addBtn.textContent = 'Update Goal';
+                addBtn.style.background = 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)';
+            }
+            
+            // Scroll to form
+            document.getElementById('goalName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('goalName').focus();
+        }
+
+        function saveOrUpdateGoal() {
+            // Check if we're editing an existing goal
+            if (window.editingGoalIndex !== undefined && window.editingGoalIndex !== null) {
+                updateExistingGoal(window.editingGoalIndex);
+                window.editingGoalIndex = null;
+                
+                // Reset button
+                const addBtn = document.querySelector('button[onclick="addGoal()"]');
+                if (addBtn) {
+                    addBtn.textContent = 'Add Goal';
+                    addBtn.style.background = 'linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%)';
+                }
+            } else {
+                addGoal();
+            }
+        }
+
+        function updateExistingGoal(idx) {
+            const name = document.getElementById('goalName').value.trim();
+            const target = document.getElementById('goalTarget').value.trim();
+            
+            if (!name) return;
+            
+            try {
+                const stored = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                if (idx >= 0 && idx < stored.length) {
+                    stored[idx] = { name, target };
+                    localStorage.setItem('myGoals', JSON.stringify(stored));
+                }
+                
+                // refresh in-memory goals
+                goals.length = 0;
+                const newStored = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                newStored.forEach(g=>{ if(g && g.name) goals.push(g); });
+                
+                // Clear form
+                document.getElementById('goalName').value = '';
+                document.getElementById('goalTarget').value = '';
+                
+                renderGoals();
+                showRecommendations();
+            } catch(e) { console.error(e); }
         }
 
         function removeGoal(idx){

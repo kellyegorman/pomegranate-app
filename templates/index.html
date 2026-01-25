@@ -1418,9 +1418,24 @@
             
             // Listen for life phase changes to reload appropriate symptoms
             const lifePhaseSelect = document.getElementById('lifePhaseSelect');
+            const cyclePhaseSelect = document.getElementById('cyclePhaseSelect');
+            
             if (lifePhaseSelect) {
                 lifePhaseSelect.addEventListener('change', function() {
                     const selectedLifePhase = this.value;
+                    
+                    // Hide/show cycle phase selector based on life phase
+                    const cyclePhaseDiv = cyclePhaseSelect.closest('.cycle-phase-selector');
+                    if (selectedLifePhase) {
+                        // Menopausal phase selected - hide menstrual cycle dropdown
+                        cyclePhaseDiv.style.display = 'none';
+                        cyclePhaseSelect.value = '';
+                    } else {
+                        // "Not applicable" selected - show menstrual cycle dropdown
+                        cyclePhaseDiv.style.display = 'block';
+                    }
+                    
+                    // Load appropriate symptoms for the selected life phase
                     initializeNutritionSection(selectedLifePhase || null);
                     
                     // Clear previous recommendations and snacks
@@ -1430,23 +1445,28 @@
                     recommendationsContainer.innerHTML = '';
                     snacksContainer.classList.remove('active');
                     snacksContainer.innerHTML = '';
-                    
-                    // Hide/show cycle phase selector based on life phase
-                    const cyclePhaseSelectElement = document.getElementById('cyclePhaseSelect');
-                    const cyclePhaseDiv = cyclePhaseSelectElement.closest('.cycle-phase-selector');
-                    if (selectedLifePhase) {
-                        cyclePhaseDiv.style.display = 'none';
-                        cyclePhaseSelectElement.value = '';
-                    } else {
-                        cyclePhaseDiv.style.display = 'block';
-                    }
                 });
             }
             
-            // Listen for cycle phase changes to clear recommendations
-            const cyclePhaseSelect = document.getElementById('cyclePhaseSelect');
+            // Listen for cycle phase changes to hide life phase selector
             if (cyclePhaseSelect) {
                 cyclePhaseSelect.addEventListener('change', function() {
+                    const selectedCyclePhase = this.value;
+                    
+                    // Hide/show life phase selector based on cycle phase
+                    const lifePhaseDiv = lifePhaseSelect.closest('.cycle-phase-selector');
+                    if (selectedCyclePhase) {
+                        // Menstrual cycle phase selected - hide life phase dropdown
+                        lifePhaseDiv.style.display = 'none';
+                        lifePhaseSelect.value = '';
+                    } else {
+                        // "Not tracking cycle phase" selected - show life phase dropdown
+                        lifePhaseDiv.style.display = 'block';
+                    }
+                    
+                    // Reload symptoms for the selected cycle phase (menstrual symptoms)
+                    initializeNutritionSection(null);
+                    
                     // Clear previous recommendations and snacks
                     const recommendationsContainer = document.getElementById('recommendationsContainer');
                     const snacksContainer = document.getElementById('snacksContainer');
