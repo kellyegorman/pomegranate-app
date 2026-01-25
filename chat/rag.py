@@ -89,157 +89,133 @@ class WomensHealthRAG:
                     torch_dtype=torch.float32,
                     local_files_only=True
                 )
-                self.gen_model.to(self.device)
-                self.gen_model.eval()
-                print("loaded successfully!")
-                self.using_finetuned = True
-            except Exception as e:
-                print(f"COULDNT load this model: {e}")
-                print("use un-fine-tuned version instead")
-                self._load_base_model()
-        else:
-            print(f"Path {generation_model_path} not found")
-            print("use un-fine-tuned version instead")
-            self._load_base_model()
-        
-        print("RAG ready!\n")
-    
-    #load base model if fine-tuned not able
-    def _load_base_model(self):
-        self.gen_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
-        self.gen_tokenizer.pad_token = self.gen_tokenizer.eos_token
-        self.gen_model = AutoModelForCausalLM.from_pretrained(
-            "distilgpt2",
-            torch_dtype=torch.float32
-        )
-        self.gen_model.to(self.device)
-        self.gen_model.eval()
-        self.using_finetuned = False
-    
-    #get most relevant from q&a using similarity score
-    def retrieve_context(self, query: str, top_k: int = 3) -> List[Dict]:
-        query_embedding = self.embedder.encode([query])[0]
-        
-        similarities = np.dot(self.kb_embeddings, query_embedding) / (
-            np.linalg.norm(self.kb_embeddings, axis=1) * np.linalg.norm(query_embedding)
-        )
-        
-        top_indices = np.argsort(similarities)[-top_k:][::-1]
-        
-        relevant_context = []
-        for idx in top_indices:
-            relevant_context.append({
-                'question': self.kb.iloc[idx]['instruction'],
-                'answer': self.kb.iloc[idx]['output'],
-                'similarity': float(similarities[idx])
-            })
-        
-        return relevant_context
-    
-    def generate_response_simple(self, user_query: str, top_k: int = 3, verbose: bool = False, similarity_threshold: float = 0.5) -> str:
-        """
-        Generate response using only knowledge base data:
-        1. High similarity (>0.75): Use direct answer from KB
-        2. Medium similarity (0.5-0.75): Use fine-tuned DistilGPT2 for fast generation
-        3. Low similarity (<0.5): Return "Resources tab" message
-        """
-        # Retrieve relevant context
-        context = self.retrieve_context(user_query, top_k=top_k)
-        max_similarity = context[0]['similarity']
-        
-        if verbose:
-            print(f"Retrieved {len(context)} relevant examples:")
-            for i, ctx in enumerate(context, 1):
-                print(f"   {i}. {ctx['question'][:50]}... (similarity: {ctx['similarity']:.3f})")
-            print(f"Max similarity: {max_similarity:.3f}")
-        
-        #  HIGH --> use answer
-        if max_similarity > 0.75:
-            if verbose:
-                print("✨ High similarity - using direct answer with context")
-            
-            base_answer = context[0]['answer']
-            
-            # Add context from other similar questions if relevant
-            additional_info = []
-            for ctx in context[1:]:
-                if ctx['similarity'] > 0.7 and ctx['answer'] != context[0]['answer']:
-                    additional_info.append(ctx['answer'])
-            
-            if additional_info:
-                return f"{base_answer}\n\nAdditionally, {additional_info[0]}"
-            else:
-                return base_answer
-        
-        # MEDIUM --> use fine-tuned DistilGPT2  (answers won't always be great btu faster)
-        elif max_similarity > similarity_threshold:
-            if verbose:
-                model_type = "fine-tuned DistilGPT2" if self.using_finetuned else "base DistilGPT2"
-                print(f"⚡ Medium similarity - using {model_type} for fast generation")
-            
-            # CONTEXT from top FOUR SIMILAR EXs
-            context_str = ""
-            for ctx in context[:4]:
-                context_str += f"Q: {ctx['question']}\nA: {ctx['answer']}\n\n"
-            
-            #  format based on whether fine-tuned or base 
-            if self.using_finetuned:
-                # fine-tuned 
-                prompt = f"<|user|>\n{user_query}\n<|assistant|>\n"
-            else:
-                # base 
-                prompt = f"Based on this information:\n\n{context_str}\nQuestion: {user_query}\nAnswer:"
-            
-            inputs = self.gen_tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=512
-            ).to(self.device)
-            
-            with torch.no_grad():
-                output_ids = self.gen_model.generate(
-                    **inputs,
-                    max_new_tokens=100,
-                    do_sample=True,
-                    top_k=50,
-                    top_p=0.9,
-                    temperature=0.7,
-                    repetition_penalty=1.15,
-                    pad_token_id=self.gen_tokenizer.pad_token_id,
-                    eos_token_id=self.gen_tokenizer.eos_token_id
-                )
-            
-            full_output = self.gen_tokenizer.decode(output_ids[0], skip_special_tokens=True)
-            
-            # Extract the answer based on model type
-            if self.using_finetuned and "<|assistant|>" in full_output:
-                reply = full_output.split("<|assistant|>")[-1].strip()
-                reply = reply.split("<|user|>")[0].strip()
-                reply = reply.split("<|endoftext|>")[0].strip()
-            elif "Answer:" in full_output:
-                reply = full_output.split("Answer:")[-1].strip()
-            else:
-                reply = full_output[len(prompt):].strip()
-            
-            # Clean (first apragraph)
-            reply = reply.split("\n\n")[0].strip()
-            
-            if verbose:
-                print(f"Generated: {reply[:100]}...")
-            
-            #  reasonable?
-            if reply and len(reply) > 20:
-                return reply
-            else:
-                # If generation fails, use the most similar answer directly
-                if verbose:
-                    print("⚠️ Generation produced poor output - falling back to similar answer")
-                if max_similarity > 0.6:
-                    return context[0]['answer']
-        
-        # LOW --> tell user to check resources instead
-        if verbose:
-            print("Low similarity or failed generation - providing Resources tab message")
-        
-        return "I'm sorry, I can't provide an answer to that. Please see the resources tab for more information!"
+                """Lightweight, defensive RAG/LLM helper.
+
+                This module performs lazy imports and supports loading a local model path
+                specified by the `LOCAL_LLM_PATH` environment variable or passed directly.
+                If heavy libraries (torch/transformers/sentence-transformers) are missing,
+                the wrapper exposes stable methods that return fallbacks instead of crashing
+                the Flask app.
+                """
+
+                from typing import Optional
+                import os
+                import traceback
+
+
+                class RagWrapper:
+                    """Wrapper that lazily loads embedding + generation models.
+
+                    Usage:
+                      R = RagWrapper()
+                      R.load(model_path='path/to/model')  # optional
+                      R.generate('prompt')
+                    """
+
+                    def __init__(self):
+                        self.model_path = os.environ.get('LOCAL_LLM_PATH')
+                        self._ready = False
+                        self._has_transformers = False
+                        self._has_sentence_transformers = False
+                        self._device = 'cpu'
+                        self._embedder = None
+                        self._generator = None
+                        self._tokenizer = None
+
+                    def load(self, model_path: Optional[str] = None, force: bool = False) -> bool:
+                        """Attempt to load transformer and embedding models. Returns True if successful."""
+                        if model_path:
+                            self.model_path = model_path
+                        if self._ready and not force:
+                            return True
+
+                        # Attempt imports lazily
+                        try:
+                            import torch
+                            from transformers import AutoTokenizer, AutoModelForCausalLM
+                            self._has_transformers = True
+                        except Exception:
+                            self._has_transformers = False
+
+                        try:
+                            from sentence_transformers import SentenceTransformer
+                            self._has_sentence_transformers = True
+                        except Exception:
+                            self._has_sentence_transformers = False
+
+                        # set device if torch present
+                        if self._has_transformers:
+                            try:
+                                import torch
+                                self._device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
+                            except Exception:
+                                self._device = 'cpu'
+
+                        # Load embedder if available
+                        if self._has_sentence_transformers:
+                            try:
+                                from sentence_transformers import SentenceTransformer
+                                self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
+                            except Exception:
+                                self._embedder = None
+
+                        # Load generator model if available and path specified or fallback to small public model
+                        if self._has_transformers:
+                            try:
+                                from transformers import AutoTokenizer, AutoModelForCausalLM
+                                model_source = self.model_path or 'distilgpt2'
+                                # prefer local files if a path is given
+                                local_only = bool(self.model_path)
+                                self._tokenizer = AutoTokenizer.from_pretrained(model_source, local_files_only=local_only)
+                                if getattr(self._tokenizer, 'pad_token', None) is None:
+                                    self._tokenizer.pad_token = self._tokenizer.eos_token
+                                self._generator = AutoModelForCausalLM.from_pretrained(model_source, local_files_only=local_only)
+                                try:
+                                    self._generator.to(self._device)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                traceback.print_exc()
+                                self._generator = None
+
+                        self._ready = bool(self._generator or self._embedder)
+                        return self._ready
+
+                    def is_ready(self) -> bool:
+                        return self._ready
+
+                    def generate(self, prompt: str, max_new_tokens: int = 128) -> str:
+                        """Generate text using loaded generator or return a safe fallback message."""
+                        if self._generator and self._tokenizer:
+                            try:
+                                import torch
+                                inputs = self._tokenizer(prompt, return_tensors='pt', truncation=True, max_length=512)
+                                # move to device if possible
+                                if hasattr(inputs, 'to'):
+                                    try:
+                                        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                                    except Exception:
+                                        pass
+                                with torch.no_grad():
+                                    out = self._generator.generate(**inputs, max_new_tokens=max_new_tokens, pad_token_id=self._tokenizer.pad_token_id)
+                                text = self._tokenizer.decode(out[0], skip_special_tokens=True)
+                                # trim prompt prefix
+                                if prompt and text.startswith(prompt):
+                                    return text[len(prompt):].strip()
+                                return text.strip()
+                            except Exception:
+                                traceback.print_exc()
+                                return "[model error] Unable to generate response — check server logs."
+
+                        # fallback: if embedder present, return nearest KB answer not implemented here
+                        if self._embedder:
+                            return "[limited] Model backend not available; embedding support exists but generation is disabled."
+
+                        return "[unavailable] No local model or required libraries (transformers, torch) are installed."
+
+
+                # module-level singleton
+                _rag = RagWrapper()
+
+                def get_rag() -> RagWrapper:
+                    return _rag

@@ -1,25 +1,30 @@
 # http://localhost:5001
 # run using python app.py and then go to ^^
 # to do list @ bottom, we can add more tabs to app if we have time!
-<<<<<<< Updated upstream
-=======
-from flask import Flask, render_template_string, request, jsonify
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-# sentence-transformers can be incompatible with some huggingface-hub
-# versions on the developer machine. Import it lazily during RAG init
-# so the Flask app can still start for UI/dev work if the model stack
-# isn't available.
-import numpy as np
-import pandas as pd
-from flask import Flask, render_template_string, request, jsonify
-from chat.rag import WomensHealthRAG
-from back.nutrition_engine import SymptomNutritionEngine
-from flask import Flask, render_template_string
-from chat.find_a_provider import ProviderSearcher
->>>>>>> Stashed changes
 
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request, jsonify
+
+# Optional heavy ML / data libraries — import defensively so the UI/dev
+# server can start even if these aren't available in the environment.
+torch = None
+AutoModelForCausalLM = None
+AutoTokenizer = None
+np = None
+pd = None
+WomensHealthRAG = None
+SymptomNutritionEngine = None
+ProviderSearcher = None
+try:
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import numpy as np
+    import pandas as pd
+    from chat.rag import WomensHealthRAG
+    from back.nutrition_engine import SymptomNutritionEngine
+    from chat.find_a_provider import ProviderSearcher
+except Exception:
+    # Missing optional packages — continue with heuristics/fallbacks
+    pass
 
 app = Flask(__name__)
 
@@ -978,8 +983,6 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
             </section>
-<<<<<<< Updated upstream
-=======
 
             <!-- resources (link + zip??) -->
             <section id="resources" class="section">
@@ -1055,8 +1058,6 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
             </section>
-
->>>>>>> Stashed changes
         </main>
     </div>
 
@@ -1562,46 +1563,42 @@ HTML_TEMPLATE = """
 </html>
 """
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-engine = SymptomNutritionEngine()
-print("Nutrition Engine ready!")
-
-provider_searcher = ProviderSearcher()
-=======
-print("Initializing rag...")
-try:
-    from sentence_transformers import SentenceTransformer
-    rag = WomensHealthRAG(
-        knowledge_base_path="./chat/data.csv",
-        # tinyllama fine-tuned responses took waayyyy too long
-        generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"
-    )
-    print("RAG initialized successfully.")
-except Exception as e:
-    print("Warning: RAG initialization failed — continuing without RAG.")
-    print(e)
-    rag = None
->>>>>>> Stashed changes
+# Initialize optional components defensively
 print("=" * 60)
 
-print("Initializing rag...")
-try:
-    from sentence_transformers import SentenceTransformer
-    rag = WomensHealthRAG(
-        knowledge_base_path="./chat/data.csv",
-        # tinyllama fine-tuned responses took waayyyy too long
-        generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"
-    )
-    print("RAG initialized successfully.")
-except Exception as e:
-    print("Warning: RAG initialization failed — continuing without RAG.")
-    print(e)
-    rag = None
-print("=" * 60)
+# Nutrition engine (optional)
+engine = None
+if SymptomNutritionEngine is not None:
+    try:
+        engine = SymptomNutritionEngine()
+        print("Nutrition Engine ready!")
+    except Exception as e:
+        print("Warning: Nutrition engine failed to initialize:", e)
 
->>>>>>> Stashed changes
+# Provider searcher (optional)
+provider_searcher = None
+if ProviderSearcher is not None:
+    try:
+        provider_searcher = ProviderSearcher()
+    except Exception as e:
+        print("Warning: Provider searcher failed to initialize:", e)
+
+# RAG initialization (optional)
+rag = None
+if WomensHealthRAG is not None:
+    try:
+        print("Initializing rag...")
+        from sentence_transformers import SentenceTransformer
+        rag = WomensHealthRAG(
+            knowledge_base_path="./chat/data.csv",
+            generation_model_path="./chat/fine-tune-attempts/distilgpt2-finetuned"
+        )
+        print("RAG initialized successfully.")
+    except Exception as e:
+        print("Warning: RAG initialization failed — continuing without RAG.")
+        print(e)
+
+print("=" * 60)
 @app.route('/')
 def home():
     """Main page route"""
@@ -1627,15 +1624,16 @@ def exercise_tracker():
     """API endpoint for exercise tracking"""
     return {"status": "success", "message": "Exercise tracker endpoint"}
 
-<<<<<<< Updated upstream
-=======
 @app.route('/api/nutrition/symptoms', methods=['GET', 'POST'])
 def get_symptoms():
     """Get list of available symptoms to log based on life phase"""
+    if engine is None:
+        return {"status": "error", "message": "Nutrition engine unavailable"}, 503
+
     life_phase = None
     if request.method == 'POST' and request.json:
         life_phase = request.json.get('life_phase')
-    
+
     symptoms = engine.get_symptoms(life_phase)
     return {
         "status": "success",
@@ -1644,79 +1642,105 @@ def get_symptoms():
         "message": "Available symptoms for logging"
     }
 
+
 @app.route('/api/nutrition/log', methods=['POST'])
 def log_symptom():
     """Log a single symptom and get immediate recommendations"""
+    if engine is None:
+        return {"status": "error", "message": "Nutrition engine unavailable"}, 503
+
     data = request.json
     symptom = data.get('symptom')
-    
+
     if not symptom:
         return {"status": "error", "message": "Symptom is required"}, 400
-    
+
     recommendation = engine.log_symptom(symptom)
-    
+
     if not recommendation:
         return {
             "status": "error",
             "message": f"Symptom '{symptom}' not found. Available symptoms: {engine.get_symptoms()}"
         }, 404
-    
+
     return {
         "status": "success",
         "data": recommendation
     }
 
+
 @app.route('/api/nutrition/recommendations', methods=['POST'])
 def get_recommendations():
     """Get personalized nutrition recommendations based on symptoms and phase"""
+    if engine is None:
+        return {"status": "error", "message": "Nutrition engine unavailable"}, 503
+
     data = request.json
     symptoms_list = data.get('symptoms', [])
     cycle_phase = data.get('cycle_phase')
     life_phase = data.get('life_phase')
-    
+
     if not symptoms_list:
         return {"status": "error", "message": "At least one symptom is required"}, 400
-    
+
     recommendations = engine.get_recommendations(symptoms_list, cycle_phase, life_phase)
-    
+
     # Add ingredient benefits to each recipe
-    from back.nutrition_engine import INGREDIENT_BENEFITS
+    try:
+        from back.nutrition_engine import INGREDIENT_BENEFITS
+    except Exception:
+        INGREDIENT_BENEFITS = {}
+
     for recipe in recommendations.get('recipes', []):
         recipe['ingredients_with_benefits'] = [
             {
                 'name': ing,
                 'benefit': INGREDIENT_BENEFITS.get(ing.lower(), 'Nutrient-rich ingredient supporting your wellness')
             }
-            for ing in recipe['ingredients']
+            for ing in recipe.get('ingredients', [])
         ]
-    
+
     return {
         "status": "success",
         "data": recommendations
     }
 
+
 @app.route('/api/nutrition/quick-snacks', methods=['POST'])
 def get_quick_snacks():
     """Get quick 5-minute snack ideas for logged symptoms"""
+    if engine is None:
+        return {"status": "error", "message": "Nutrition engine unavailable"}, 503
+
     data = request.json
     symptoms_list = data.get('symptoms', [])
-    
+
     if not symptoms_list:
         return {"status": "error", "message": "At least one symptom is required"}, 400
-    
+
     snacks = engine.get_quick_snacks(symptoms_list)
-    
+
     return {
         "status": "success",
         "data": snacks,
         "message": f"Found {len(snacks)} quick snack ideas"
     }
-
->>>>>>> Stashed changes
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
     """API endpoint for health assistant chatbot"""
-    return {"status": "success", "message": "Chatbot endpoint"}
+    data = request.json or {}
+    user_msg = data.get('message', '')
+    if not user_msg:
+        return jsonify({'reply': 'Please send a message in the request body ("message").'}), 400
+
+    if rag is None:
+        return jsonify({"reply": "RAG unavailable — backend model stack not initialized in this environment."})
+
+    try:
+        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"reply": f"Assistant error: {e}"}), 500
 
 # what to work on:
 # implement backend for each endpoint:
@@ -1741,33 +1765,35 @@ def search_providers():
                 'success': False,
                 'error': 'Please enter a valid 5-digit ZIP code'
             }), 400
-        
-<<<<<<< Updated upstream
+
+        if provider_searcher is None:
+            return jsonify({'success': False, 'error': 'Provider search unavailable'}), 503
+
         print(f"🔍 Searching providers for ZIP: {zipcode}")
-        
+
         # Get coordinates from zipcode
         coords = provider_searcher.get_coordinates_from_zipcode(zipcode)
-        
+
         if not coords:
             return jsonify({
                 'success': False,
                 'error': 'Could not find location for this ZIP code'
             }), 404
-        
+
         lat, lon = coords
         print(f"📍 Coordinates: {lat}, {lon}")
-        
+
         # Search for providers
         providers = provider_searcher.search_providers_overpass(lat, lon, radius_km=25)
-        
+
         # Add Planned Parenthood info
         providers = provider_searcher.add_planned_parenthood_locations(providers)
-        
+
         # Get mental health resources
         mental_health = provider_searcher.get_mental_health_resources()
-        
+
         print(f"✅ Found {len(providers)} providers")
-        
+
         return jsonify({
             'success': True,
             'zipcode': zipcode,
@@ -1775,17 +1801,6 @@ def search_providers():
             'providers': providers[:20],  # Limit to 20 results
             'mental_health_resources': mental_health
         })
-=======
-        if rag is None:
-            return jsonify({"reply": "RAG unavailable — backend model stack not initialized in this environment."})
-
-        reply = rag.generate_response_simple(user_msg, top_k=3, verbose=True, similarity_threshold=0.5)
-
-        print(f"Assistant: {reply}")
-        print(f"{'='*60}\n")
-
-        return jsonify({"reply": reply})
->>>>>>> Stashed changes
         
     except Exception as e:
         print(f"❌ Error searching providers: {e}")

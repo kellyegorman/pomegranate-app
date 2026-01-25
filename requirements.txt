@@ -1,17 +1,9 @@
-pandas==2.1.0
-numpy==1.24.3
+flask==3.0.0
 requests==2.31.0
 beautifulsoup4==4.12.2
-flask==3.0.0
-<<<<<<< Updated upstream
-=======
+pandas==2.1.0
+numpy==1.24.3
 torch==2.10.0
->>>>>>> Stashed changes
 transformers==4.36.0
 sentence-transformers==2.2.2
-pandas==2.1.0
-numpy==1.24.3
-requests==2.31.0
-beautifulsoup4==4.12.2
-torch==2.10.0
 geopy>=2.4.0
