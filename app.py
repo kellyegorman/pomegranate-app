@@ -3174,6 +3174,56 @@ def chatbot_feedback():
             'message': 'An error occurred processing your feedback.'
         }), 500
 
+@app.route('/api/providers/search', methods=['POST'])
+def search_providers():
+    try:
+        data = request.json
+        zipcode = data.get('zipcode', '').strip()
+        
+        if not zipcode or len(zipcode) != 5 or not zipcode.isdigit():
+            return jsonify({
+                'success': False,
+                'error': 'Please enter a valid 5-digit ZIP code'
+            }), 400
+        
+        print(f"Searching providers in {zipcode}")
+        
+        coords = provider_searcher.get_coordinates_from_zipcode(zipcode)
+        
+        if not coords:
+            return jsonify({
+                'success': False,
+                'error': 'Could not find location for this ZIP code'
+            }), 404
+        
+        lat, lon = coords
+        print(f"📍 Coordinates: {lat}, {lon}")
+        
+        providers = provider_searcher.search_providers_overpass(lat, lon, radius_km=25)
+        
+        providers = provider_searcher.add_planned_parenthood_locations(providers)
+        
+        mental_health = provider_searcher.get_mental_health_resources()
+        
+        print(f"Found {len(providers)} providers")
+        
+        return jsonify({
+            'success': True,
+            'zipcode': zipcode,
+            'location': f"{lat}, {lon}",
+            'providers': providers[:20],  # Limit to 20 results
+            'mental_health_resources': mental_health
+        })
+        
+    except Exception as e:
+        print(f"Error searching providers: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'An error occurred while searching for providers'
+        }), 500
+
 if __name__ == '__main__':
     print("\nStarting Flask server on http://localhost:5001")
     print("Chat interface ready!")
