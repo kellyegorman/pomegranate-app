@@ -865,12 +865,12 @@ HTML_TEMPLATE = """
                         96% of scientific knowledge, drug testing, and treatment guidelines are based on male biology.
                     </p>
                     <p class="hero-subtitle">
-                        This app takes a holistic approach - helping women meet their health goals and live healthy lives.
+                        This app takes a holistic approach to helping women meet their health goals and live healthy lives.
                      </p>
                 </div>
                 <div class="features-overview">
                     <div class="overview-card">
-                        <h3 class="overview-title">Menstrual & Reproductive Health</h3>
+                        <h3 class="overview-title">Reproductive & Mental Health</h3>
                         <p class="overview-text">
                             Log period cycle, symptoms, moods, and notes to track patterns over time. Get insights into predicted periods, fertile windows, and ovulation days.
                         </p>
@@ -1003,15 +1003,15 @@ HTML_TEMPLATE = """
 
             <!-- Chat (Pommie!!) -->
             <section id="chatbot" class="section">
-                <h2 class="section-title">Health Assistant</h2>
+                <h2 class="section-title">Pommie</h2>
                 <p class="section-description">
-                    Chat with our AI health assistant for personalized guidance and wellness support.
+                    Ask questions related to women's health, get health advice, or redirect to Resources tab for more information.
                 </p>
                 
                 <div class="chatbot-container">
                     <div class="chat-messages" id="chatMessages">
                         <p style="color: #999; text-align: center; padding: 40px 20px;">
-                            Start a conversation with your health assistant
+                            Ask me a question about women's health! 😄😄
                         </p>
                     </div>
                     <div class="chat-input-container">
@@ -1518,7 +1518,7 @@ HTML_TEMPLATE = """
                 return;
             }
             
-            resultsDiv.innerHTML = '<p style="color: #999; padding: 15px;">🔍 Searching for providers...</p>';
+            resultsDiv.innerHTML = '<p style="color: #999; padding: 15px;">Finding a provider near you ...</p>';
             
             fetch('/api/providers/search', {
                 method: 'POST',
@@ -1758,7 +1758,7 @@ def search_providers():
                 'error': 'Please enter a valid 5-digit ZIP code'
             }), 400
         
-        print(f"🔍 Searching providers for ZIP: {zipcode}")
+        print(f"Finding providers near {zipcode}")
         
         # Get coordinates from zipcode
         coords = provider_searcher.get_coordinates_from_zipcode(zipcode)
@@ -1792,7 +1792,7 @@ def search_providers():
         })
         
     except Exception as e:
-        print(f"❌ Error searching providers: {e}")
+        print(f"Error searching providers: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
