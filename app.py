@@ -1552,7 +1552,7 @@ HTML_TEMPLATE = """
 
             <!-- Menstural & Mental -->
             <section id="menstrual" class="section">
-                <h2 class="section-title">🌸 Menstrual Cycle Tracker 🌸</h2>
+                <h2 class="section-title">Menstrual Cycle Tracker</h2>
                 <p class="section-description">
                     Track your menstrual cycle and maintain a personal journal to better understand your body's patterns.
                 </p>
@@ -1739,7 +1739,7 @@ HTML_TEMPLATE = """
                 </p>
                 
                 <div class="tabs">
-                    <button class="tab-btn active" onclick="showTab('fitness', 'diet')">Diet</button>
+                    
                     <button class="tab-btn" onclick="showTab('fitness', 'exercise')">Exercise</button>
                     <button class="tab-btn" onclick="showTab('fitness', 'nutrition')">Nutrition</button>
                 </div>
@@ -1916,7 +1916,7 @@ HTML_TEMPLATE = """
 
             <!-- Chat (Pommie!!) -->
             <section id="chatbot" class="section">
-                <h2 class="section-title">Pommie</h2>
+                <h2 class="section-title">Pommie 👩‍⚕️</h2>
                 <p class="section-description">
                     Ask questions related to women's health, get health advice, or redirect to Resources tab for more information.
                 </p>
