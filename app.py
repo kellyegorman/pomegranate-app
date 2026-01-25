@@ -12,6 +12,8 @@ from flask import Flask, render_template_string, request, jsonify
 from chat.rag import WomensHealthRAG
 from back.nutrition_engine import SymptomNutritionEngine
 from flask import Flask, render_template_string
+from chat.find_a_provider import ProviderSearcher
+
 
 app = Flask(__name__)
 
@@ -1021,11 +1023,37 @@ HTML_TEMPLATE = """
 
             <!-- resources (link + zip??) -->
             <section id="resources" class="section">
-                <h2 class="section-title">Helpful links</h2>
+                <h2 class="section-title">Health Resources</h2>
                 <p class="section-description">
-                    Trusted medical sources for women's health information.
+                    Find trusted healthcare providers in your area and access national health resources.
                 </p>
                 
+                <!-- Provider Search -->
+                <div style="background: linear-gradient(135deg, #fff0f5 0%, #ffe5ee 100%); padding: 30px; border-radius: 12px; margin-bottom: 30px;">
+                    <h3 style="color: #ff9dbf; margin-bottom: 20px; font-size: 24px;">Find Local Providers</h3>
+                    <p style="color: #666; margin-bottom: 20px;">Enter your ZIP code to find women's health providers, mental health services, hospitals, and clinics near you.</p>
+                    
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <input 
+                            type="text" 
+                            id="zipcodeInput" 
+                            placeholder="Enter 5-digit ZIP code" 
+                            maxlength="5"
+                            style="flex: 1; padding: 12px 20px; border: 2px solid #ffd6e8; border-radius: 25px; font-size: 16px; outline: none;"
+                        />
+                        <button 
+                            onclick="searchProviders()" 
+                            style="padding: 12px 30px; background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; border: none; border-radius: 25px; font-size: 16px; font-weight: 600; cursor: pointer;"
+                        >
+                            Search
+                        </button>
+                    </div>
+                    
+                    <div id="providerResults"></div>
+                </div>
+                
+                <!-- National Resources -->
+                <h3 style="color: #ff9dbf; margin-bottom: 20px; font-size: 24px;">National Resources</h3>
                 <div class="resource-list">
                     <div class="resource-item">
                         <h4>Women's Health (womenshealth.gov)</h4>
@@ -1046,25 +1074,27 @@ HTML_TEMPLATE = """
                     </div>
                     
                     <div class="resource-item">
-                        <h4>Cleveland Clinic Health Library</h4>
-                        <p>Comprehensive health information reviewed by medical professionals.</p>
-                        <a href="https://my.clevelandclinic.org/health" target="_blank">Visit Website →</a>
-                    </div>
-                    
-                    <div class="resource-item">
                         <h4>Planned Parenthood</h4>
-                        <p>Information about reproductive health, birth control, and sexual wellness.</p>
-                        <a href="https://www.plannedparenthood.org/learn" target="_blank">Visit Website →</a>
+                        <p>Reproductive health services, birth control, STI testing, and sexual wellness education.</p>
+                        <p><strong>Phone:</strong> 1-800-230-7526</p>
+                        <a href="https://www.plannedparenthood.org/health-center" target="_blank">Find a Health Center →</a>
                     </div>
                     
                     <div class="resource-item">
-                        <h4>NIH - Office of Research on Women's Health</h4>
-                        <p>Research and resources on women's health from the National Institutes of Health.</p>
-                        <a href="https://orwh.od.nih.gov/" target="_blank">Visit Website →</a>
+                        <h4>National Suicide & Crisis Lifeline</h4>
+                        <p>24/7 crisis support for mental health emergencies.</p>
+                        <p><strong>Call/Text:</strong> 988</p>
+                        <a href="https://988lifeline.org" target="_blank">Visit Website →</a>
+                    </div>
+                    
+                    <div class="resource-item">
+                        <h4>Postpartum Support International</h4>
+                        <p>Support for pregnancy and postpartum mental health concerns.</p>
+                        <p><strong>Phone:</strong> 1-800-944-4773</p>
+                        <a href="https://www.postpartum.net" target="_blank">Visit Website →</a>
                     </div>
                 </div>
             </section>
-
 
         </main>
     </div>
@@ -1477,6 +1507,98 @@ HTML_TEMPLATE = """
                 });
             }
         });
+
+        // Provider Search Function
+        function searchProviders() {
+            const zipcode = document.getElementById('zipcodeInput').value.trim();
+            const resultsDiv = document.getElementById('providerResults');
+            
+            if (!zipcode || zipcode.length !== 5 || !/^\d{5}$/.test(zipcode)) {
+                resultsDiv.innerHTML = '<p style="color: #c62828; padding: 15px; background: #ffebee; border-radius: 8px;">Please enter a valid 5-digit ZIP code.</p>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<p style="color: #999; padding: 15px;">🔍 Searching for providers...</p>';
+            
+            fetch('/api/providers/search', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ zipcode: zipcode })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    resultsDiv.innerHTML = `<p style="color: #c62828; padding: 15px; background: #ffebee; border-radius: 8px;">${data.error}</p>`;
+                    return;
+                }
+                
+                let html = '<div style="margin-top: 20px;">';
+                
+                // Local Providers
+                if (data.providers && data.providers.length > 0) {
+                    html += '<h4 style="color: #ff9dbf; margin-bottom: 15px;">Local Healthcare Providers</h4>';
+                    html += '<div style="display: grid; gap: 15px;">';
+                    
+                    data.providers.forEach(provider => {
+                        const distanceText = provider.distance !== 'N/A' ? `${provider.distance} miles away` : '';
+                        html += `
+                            <div style="background: white; border: 2px solid #ffd6e8; border-radius: 8px; padding: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <h5 style="color: #ff9dbf; margin: 0; font-size: 16px;">${provider.name}</h5>
+                                    ${distanceText ? `<span style="color: #999; font-size: 14px;">${distanceText}</span>` : ''}
+                                </div>
+                                <p style="color: #666; margin: 5px 0; font-size: 14px;"><strong>Type:</strong> ${provider.type}</p>
+                                ${provider.address !== 'Address not available' ? `<p style="color: #666; margin: 5px 0; font-size: 14px;"><strong>Address:</strong> ${provider.address}</p>` : ''}
+                                ${provider.phone !== 'N/A' ? `<p style="color: #666; margin: 5px 0; font-size: 14px;"><strong>Phone:</strong> ${provider.phone}</p>` : ''}
+                                ${provider.website ? `<a href="${provider.website}" target="_blank" style="color: #ff9dbf; text-decoration: none; font-size: 14px;">Visit Website →</a>` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                } else {
+                    html += '<p style="color: #666; padding: 15px; background: #fff5f8; border-radius: 8px;">No providers found in your area. Try expanding your search or contact the national resources below.</p>';
+                }
+                
+                // Mental Health Resources
+                if (data.mental_health_resources && data.mental_health_resources.length > 0) {
+                    html += '<h4 style="color: #ff9dbf; margin-top: 30px; margin-bottom: 15px;">National Mental Health Resources</h4>';
+                    html += '<div style="display: grid; gap: 15px;">';
+                    
+                    data.mental_health_resources.forEach(resource => {
+                        html += `
+                            <div style="background: white; border: 2px solid #ffd6e8; border-radius: 8px; padding: 15px;">
+                                <h5 style="color: #ff9dbf; margin: 0 0 8px 0; font-size: 16px;">${resource.name}</h5>
+                                <p style="color: #666; margin: 5px 0; font-size: 14px;">${resource.description}</p>
+                                ${resource.phone ? `<p style="color: #666; margin: 5px 0; font-size: 14px;"><strong>Phone:</strong> ${resource.phone}</p>` : ''}
+                                ${resource.website ? `<a href="${resource.website}" target="_blank" style="color: #ff9dbf; text-decoration: none; font-size: 14px;">Visit Website →</a>` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                }
+                
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultsDiv.innerHTML = '<p style="color: #c62828; padding: 15px; background: #ffebee; border-radius: 8px;">An error occurred while searching. Please try again.</p>';
+            });
+        }
+
+        // Allow Enter key to trigger search
+        document.addEventListener('DOMContentLoaded', function() {
+            const zipcodeInput = document.getElementById('zipcodeInput');
+            if (zipcodeInput) {
+                zipcodeInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        searchProviders();
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>
@@ -1484,6 +1606,9 @@ HTML_TEMPLATE = """
 
 engine = SymptomNutritionEngine()
 print("Nutrition Engine ready!")
+
+provider_searcher = ProviderSearcher()
+print("=" * 60)
 
 print("Initializing rag...")
 rag = WomensHealthRAG(
@@ -1619,6 +1744,61 @@ def chatbot():
         import traceback
         traceback.print_exc()
         return jsonify({"reply": "Sorry, I encountered an error."}), 500
+
+@app.route('/api/providers/search', methods=['POST'])
+def search_providers():
+    """Search for healthcare providers by zipcode"""
+    try:
+        data = request.json
+        zipcode = data.get('zipcode', '').strip()
+        
+        if not zipcode or len(zipcode) != 5 or not zipcode.isdigit():
+            return jsonify({
+                'success': False,
+                'error': 'Please enter a valid 5-digit ZIP code'
+            }), 400
+        
+        print(f"🔍 Searching providers for ZIP: {zipcode}")
+        
+        # Get coordinates from zipcode
+        coords = provider_searcher.get_coordinates_from_zipcode(zipcode)
+        
+        if not coords:
+            return jsonify({
+                'success': False,
+                'error': 'Could not find location for this ZIP code'
+            }), 404
+        
+        lat, lon = coords
+        print(f"📍 Coordinates: {lat}, {lon}")
+        
+        # Search for providers
+        providers = provider_searcher.search_providers_overpass(lat, lon, radius_km=25)
+        
+        # Add Planned Parenthood info
+        providers = provider_searcher.add_planned_parenthood_locations(providers)
+        
+        # Get mental health resources
+        mental_health = provider_searcher.get_mental_health_resources()
+        
+        print(f"✅ Found {len(providers)} providers")
+        
+        return jsonify({
+            'success': True,
+            'zipcode': zipcode,
+            'location': f"{lat}, {lon}",
+            'providers': providers[:20],  # Limit to 20 results
+            'mental_health_resources': mental_health
+        })
+        
+    except Exception as e:
+        print(f"❌ Error searching providers: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'An error occurred while searching for providers'
+        }), 500
 
 if __name__ == '__main__':
     print("\nStarting Flask server on http://localhost:5001")
