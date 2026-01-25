@@ -12,6 +12,7 @@ from chat.rag import WomensHealthRAG
 from back.nutrition_engine import SymptomNutritionEngine
 from back.nutrition_api import nutrition_bp
 from chat.find_a_provider import ProviderSearcher
+from flask import Flask, render_template, render_template_string, request, jsonify
 
 
 app = Flask(__name__)
@@ -1928,6 +1929,74 @@ HTML_TEMPLATE = """
             event.target.classList.add('active');
         }
 
+        async function showRecommendations() {
+            saveBodyInfo();
+            const recEl = document.getElementById('recommendations');
+            recEl.innerHTML = 'Loading recommendations...';
+            const body = JSON.parse(localStorage.getItem('bodyInfo') || '{}');
+            const goalsLocal = goals.slice();
+            const payload = {
+                age: Number(body.age) || null,
+                height_cm: Number(body.height_cm) || null,
+                weight_kg: Number(body.weight_kg) || null,
+                bodyType: body.bodyType || '',
+                chars: body.chars || {},
+                endGoal: localStorage.getItem('endGoal') || '',
+                goals: goalsLocal || [],
+                customExercises: JSON.parse(localStorage.getItem('customExercises')||'[]')
+            };
+
+            try {
+                const resp = await fetch('/api/fitness/llm_recommend', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (!data || data.status !== 'success') {
+                    recEl.textContent = 'Recommendations unavailable.';
+                    return;
+                }
+                let recs = data.recommendations || data.exercises || [];
+                // merge in any user-added custom exercises that match endGoal or goals
+                try {
+                    const customs = JSON.parse(localStorage.getItem('customExercises')||'[]');
+                    const eg = (localStorage.getItem('endGoal')||'').toLowerCase();
+                    const goalTokens = (goalsLocal||[]).map(g=> (g.name||'').toLowerCase()).filter(Boolean);
+                    const matches = [];
+                    customs.forEach(c=>{
+                        const name = (c.name||'').toLowerCase();
+                        const targets = ((c.targets||'')+ '').toLowerCase();
+                        let include = false;
+                        if (eg && (name.includes(eg) || targets.includes(eg))) include = true;
+                        if (!include && goalTokens.length) {
+                            for (const t of goalTokens) {
+                                if (name.includes(t) || targets.includes(t)) { include = true; break; }
+                            }
+                        }
+                        if (include) matches.push({id: c.id || ('custom_'+Date.now()), name: c.name, description: c.description, rationale: 'User-added exercise', targets: (c.targets||'').split(',').map(s=>s.trim())});
+                    });
+                    // append matches (avoid duplicates by name)
+                    const seen = new Set(recs.map(r=> (r.name||'').toLowerCase()));
+                    matches.forEach(m=>{ if (!seen.has((m.name||'').toLowerCase())) { recs.push(m); seen.add((m.name||'').toLowerCase()); } });
+                } catch(e) { console.error('merge custom exercises', e); }
+                if (!recs.length) {
+                    recEl.textContent = 'No recommendations found. Try changing goals or body info.';
+                    return;
+                }
+                recEl.innerHTML = '<strong>Recommended exercises</strong><ul style="margin-top:8px; padding-left:18px; color:#444;">' +
+                    recs.map(t => {
+                        const pres = t.prescription || t.pres || null;
+                        const presText = pres ? `<div style=\"color:#444; font-size:13px; margin-top:6px;\">${formatPrescription(pres)}</div>` : '';
+                        return `<li style="margin-bottom:12px;"><strong>${t.name}</strong> — ${t.description || ''}<div style="color:#666; margin-top:6px; font-size:13px;">${t.rationale || ''}</div>${presText}</li>`;
+                    }).join('') +
+                    '</ul>';
+            } catch (err) {
+                console.error(err);
+                recEl.textContent = 'Error loading recommendations.';
+            }
+
+        }
+
         // Global variable to track current message for feedback
         let currentMessageData = null;
 
@@ -2082,6 +2151,159 @@ HTML_TEMPLATE = """
                 sendMessage();
             }
         });
+
+                // Format a prescription object into readable text
+        function formatPrescription(p){
+            if(!p) return '';
+            if(p.sets || p.reps){
+                const sets = p.sets || '';
+                const reps = p.reps || '';
+                const freq = p.frequency_per_week ? (p.frequency_per_week + 'x/week') : '';
+                return `${sets} sets x ${reps} reps ${freq ? ' · '+freq : ''}`.trim();
+            }
+            if(p.duration_min){
+                const dur = p.duration_min + ' min';
+                const freq = p.frequency_per_week ? (p.frequency_per_week + 'x/week') : '';
+                return `${dur}${freq ? ' · '+freq : ''} · ${p.intensity || ''}`.trim();
+            }
+            return Object.keys(p).map(k=> `${k}: ${p[k]}`).join(', ');
+        }
+
+        // Exercise goals, logging, red-flag detection and breathing helpers
+        const goals = [];
+        const logs = [];
+
+        function addGoal() {
+            // Auto-save body info and ensure it exists before creating goals
+            try { saveBodyInfo(); } catch(e){}
+            const body = JSON.parse(localStorage.getItem('bodyInfo') || '{}');
+            if (!body || !body.age) {
+                alert('Please enter and save your body information first (age/height/weight).');
+                return;
+            }
+            const name = document.getElementById('goalName').value.trim();
+            const target = document.getElementById('goalTarget').value.trim();
+            if (!name) return;
+            const goal = { name, target };
+            // prevent duplicate identical goals
+            try {
+                const saved = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                const exists = saved.some(g => (g.name||'').toLowerCase() === name.toLowerCase() && (g.target||'') === target);
+                if (exists) {
+                    alert('This goal already exists in My Goals.');
+                    document.getElementById('goalName').value = '';
+                    document.getElementById('goalTarget').value = '';
+                    return;
+                }
+                saved.push(goal);
+                localStorage.setItem('myGoals', JSON.stringify(saved));
+            } catch(e){}
+            goals.push(goal);
+            document.getElementById('goalName').value = '';
+            document.getElementById('goalTarget').value = '';
+            renderGoals();
+
+            // Ask backend to build a simple plan and tailored recommendations for this updated goals list
+            (async ()=>{
+                try {
+                    const payload = {
+                        age: Number(body.age)||null,
+                        height_cm: Number(body.height_cm)||null,
+                        weight_kg: Number(body.weight_kg)||null,
+                        bodyType: body.bodyType||'',
+                        chars: body.chars||{},
+                        endGoal: localStorage.getItem('endGoal')||'',
+                        goals: JSON.parse(localStorage.getItem('myGoals')||'[]')
+                    };
+                    const resp = await fetch('/api/fitness/llm_recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+                    const data = await resp.json();
+                    if (data && data.status === 'success') {
+                        // show returned plan in recommendations area
+                        const recEl = document.getElementById('recommendations');
+                        let html = '';
+                        if (data.plan && data.plan.length) {
+                            html += '<strong>Personalized Plan</strong>';
+                            html += '<ul style="margin-top:8px; padding-left:18px; color:#444;">' + data.plan.map(p=>{
+                                const exHtml = (p.exercises||[]).map(e=>{
+                                    if(!e) return '';
+                                    if (typeof e === 'string') return e;
+                                    const pres = e.prescription || e.pres || null;
+                                    return pres ? `${e.name} — ${formatPrescription(pres)}` : e.name;
+                                }).join('<br>');
+                                return `<li style="margin-bottom:8px;"><strong>${p.goal}</strong> — ${p.schedule}<div style="color:#666; font-size:13px; margin-top:6px;">Exercises:<div style=\"margin-top:6px; color:#444;\">${exHtml}</div></div><div style="color:#666; font-size:13px; margin-top:6px;">${p.rationale||''}</div></li>`;
+                            }).join('') + '</ul>';
+                        }
+                        if (data.recommendations && data.recommendations.length) {
+                            html += '<hr style="margin:8px 0;">';
+                            html += '<strong>Recommended exercises</strong><ul style="margin-top:8px; padding-left:18px; color:#444;">' +
+                                data.recommendations.map(t=>`<li style="margin-bottom:12px;"><strong>${t.name}</strong> — ${t.description}<div style="color:#666; margin-top:6px; font-size:13px;">${t.rationale||''}</div></li>`).join('') + '</ul>';
+                        }
+                        recEl.innerHTML = html;
+                        try { mergeRecommendedIntoCustom(data.recommendations || data.exercises || []); } catch(e){ console.error('merge recommended', e); }
+                    }
+                } catch(e) { console.error('Goal planning error', e); }
+            })();
+        }
+
+        
+        function logActivity() {
+            const type = document.getElementById('activityType').value.trim();
+            const minutes = document.getElementById('activityMinutes').value.trim();
+
+            if (!type || !minutes) return;
+
+            // collect built-in symptoms
+            const symptoms = [];
+            const built = [
+                ['sym_chest','Chest pain','💓'],
+                ['sym_breath','Shortness of breath','😮‍💨'],
+                ['sym_nausea','Nausea','🤢'],
+                ['sym_dizzy','Dizziness','💫'],
+                ['sym_faint','Fainting / near-faint','⚠️'],
+                ['sym_severe','Severe pain','🩸'],
+                ['sym_joint','Joint pain','🦴'],
+                ['sym_fatigue','Excessive fatigue','😴']
+            ];
+            built.forEach(s => { try{ if(document.getElementById(s[0]).checked) symptoms.push({key:s[1], icon:s[2]}); }catch(e){} });
+
+            // collect custom symptoms (added by user)
+            const customChecks = document.querySelectorAll('.custom-sym');
+            customChecks.forEach(cb => {
+                try {
+                    if (cb.checked) {
+                        const label = cb.dataset.label || cb.id || 'Other';
+                        symptoms.push({ key: label, icon: '🔸' });
+                    }
+                } catch (e) {}
+            });
+
+            const entry = { type, minutes: Number(minutes), symptoms, ts: new Date().toLocaleString() };
+            logs.unshift(entry);
+            document.getElementById('activityType').value = '';
+            document.getElementById('activityMinutes').value = '';
+            // reset built-in symptom checkboxes
+            built.forEach(s => { try{ document.getElementById(s[0]).checked = false; }catch(e){} });
+            // reset custom symptom checkboxes
+            customChecks.forEach(cb => { try{ cb.checked = false; }catch(e){} });
+            renderLogs();
+
+            // Send activity to backend for assessment (considers symptoms, activity, time)
+            try {
+                fetch('/api/fitness/assess_activity', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(entry)
+                }).then(r => r.json()).then(resp => {
+                    if (resp && resp.flag) {
+                        showRedFlag(true, resp.reasons || []);
+                    } else {
+                        showRedFlag(false, []);
+                    }
+                }).catch(e => {
+                    console.error('Flagging error', e);
+                });
+            } catch (e) { console.error(e); }
+        }
+
 
         // ============ NUTRITION ENGINE FUNCTIONS ============
         //add nutrition logic
@@ -3018,6 +3240,517 @@ HTML_TEMPLATE = """
             }
         });
 
+                // Custom symptom management
+        function addCustomSymptom() {
+            const input = document.getElementById('otherSymptomInput');
+            const val = input.value.trim();
+            if (!val) return;
+            // Respect a cap of 10 stored custom symptoms; still allow immediate one-off logging
+            const storedKey = 'customSymptoms';
+            const stored = JSON.parse(localStorage.getItem(storedKey ) || '[]');
+            if (stored.length >= 10) {
+                // do not persist more than 10; inform user and still allow temporary use
+                alert('Maximum of 10 custom symptoms saved — additional symptoms will be used for this log but not saved.');
+                // create a temporary checkbox in the UI for immediate selection
+                const container = document.getElementById('symptomContainer');
+                const tempId = `temp_sym_${Date.now()}`;
+                const label = document.createElement('label');
+                label.className = 'sym-pill custom-node';
+                label.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; border:1px solid #fde8ef; background:#fff; cursor:pointer; margin-left:4px;';
+                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = tempId; cb.className = 'custom-sym'; cb.dataset.label = val;
+                const span = document.createElement('span'); span.textContent = ' ' + val + ' 🔸';
+                label.appendChild(cb); label.appendChild(span);
+                container.appendChild(label);
+                input.value = '';
+                return;
+            }
+
+            stored.unshift(val);
+            localStorage.setItem(storedKey, JSON.stringify(stored));
+            input.value = '';
+            renderCustomSymptoms();
+        }
+
+        function renderCustomSymptoms() {
+            const container = document.getElementById('symptomContainer');
+            // remove existing custom nodes
+            const existing = container.querySelectorAll('.custom-node');
+            existing.forEach(n => n.remove());
+            const stored = JSON.parse(localStorage.getItem('customSymptoms' ) || '[]');
+            stored.forEach((s, idx) => {
+                const id = `custom_sym_${idx}`;
+                const wrapper = document.createElement('div');
+                wrapper.style.display = 'inline-flex';
+                wrapper.style.alignItems = 'center';
+                wrapper.style.marginLeft = '4px';
+
+                const label = document.createElement('label');
+                label.className = 'sym-pill custom-node';
+                label.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; border:1px solid #fde8ef; background:#fff; cursor:pointer;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.id = id;
+                cb.className = 'custom-sym';
+                cb.dataset.label = s;
+                const span = document.createElement('span'); span.textContent = ' ' + s + ' 🔸';
+                label.appendChild(cb);
+                label.appendChild(span);
+
+                const del = document.createElement('button');
+                del.className = 'sym-pill';
+                del.style.padding = '6px 8px';
+                del.style.marginLeft = '6px';
+                del.style.background = '#fff';
+                del.style.color = '#c62828';
+                del.style.border = '1px solid #fde8ef';
+                del.style.borderRadius = '999px';
+                del.style.cursor = 'pointer';
+                del.style.fontSize = '14px';
+                del.textContent = '✖';
+                del.title = 'Delete custom symptom';
+                del.onclick = () => { deleteCustomSym(idx); };
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(del);
+                container.appendChild(wrapper);
+            });
+        }
+
+        function deleteCustomSym(idx){
+            try{
+                const stored = JSON.parse(localStorage.getItem('customSymptoms')||'[]');
+                if(idx>=0 && idx<stored.length){ stored.splice(idx,1); localStorage.setItem('customSymptoms', JSON.stringify(stored)); renderCustomSymptoms(); }
+            }catch(e){console.error(e)}
+        }
+
+        // Custom exercise management
+        function showAddExerciseForm() {
+            const f = document.getElementById('addExerciseForm');
+            if (!f) return;
+            f.style.display = 'block';
+            f.scrollIntoView({behavior:'smooth'});
+        }
+        function hideAddExerciseForm(){ const f=document.getElementById('addExerciseForm'); if(f) f.style.display='none'; }
+        function addCustomExercise(){
+            const name = (document.getElementById('customExerciseName').value||'').trim();
+            const targets = (document.getElementById('customExerciseTargets').value||'').trim();
+            if(!name) { alert('Please provide an exercise name'); return; }
+            // generate a tailored description and rationale based on name + targets + body
+            const body = JSON.parse(localStorage.getItem('bodyInfo')||'{}');
+            const gen = generateExerciseRecommendation(name, targets, body);
+            const stored = JSON.parse(localStorage.getItem('customExercises')||'[]');
+            const idx = stored.findIndex(e=> (e.name||'').toLowerCase() === name.toLowerCase());
+            if(idx === -1){
+                stored.unshift({ id: 'custom_'+Date.now(), name, description: gen.description, targets: gen.targets.join(', '), suggested: true });
+            } else {
+                stored[idx].description = gen.description || stored[idx].description;
+                stored[idx].targets = gen.targets.join(', ') || stored[idx].targets;
+                stored[idx].suggested = true;
+            }
+            localStorage.setItem('customExercises', JSON.stringify(stored));
+            document.getElementById('customExerciseName').value='';
+            document.getElementById('customExerciseTargets').value='';
+            hideAddExerciseForm();
+            renderCustomExercises();
+            // immediately add the generated recommendation to recommendations area
+            try{ mergeRecommendedIntoCustom([gen]); showRecommendations(); } catch(e){ console.error(e); }
+            // also ask server to augment personalization
+            try { fetchAndAddSuggestedExercises(); } catch(e){ /*ignore*/ }
+        }
+
+        // End-goal custom input handlers
+        function showEndGoalForm(){ const f=document.getElementById('endGoalForm'); if(f){ f.style.display='block'; f.scrollIntoView({behavior:'smooth'}); } }
+        function hideEndGoalForm(){ const f=document.getElementById('endGoalForm'); if(f) f.style.display='none'; }
+        function saveEndGoalCustom(){ const v=(document.getElementById('endGoalInput').value||'').trim(); if(!v) return; localStorage.setItem('endGoal', v); document.getElementById('selectedGoal').textContent = v; hideEndGoalForm(); showSaveStatus(); }
+
+        function saveBodyInfo() {
+            const ft = Number(document.getElementById('userHeightFt').value || 0);
+            const inch = Number(document.getElementById('userHeightIn').value || 0);
+            const lbs = Number(document.getElementById('userWeightLbs').value || 0);
+            const height_cm = ft*30.48 + inch*2.54;
+            const weight_kg = lbs * 0.45359237;
+            const info = {
+                age: document.getElementById('userAge').value || '',
+                height_ft: ft || '',
+                height_in: inch || '',
+                weight_lbs: lbs || '',
+                height_cm: Math.round(height_cm*10)/10,
+                weight_kg: Math.round(weight_kg*10)/10,
+                bodyType: document.getElementById('bodyType').value || '',
+                chars: {
+                    preg: !!document.getElementById('char_preg').checked,
+                    post: !!document.getElementById('char_post').checked,
+                    meno: !!document.getElementById('char_meno').checked,
+                    pelvic: !!document.getElementById('char_pelvic').checked,
+                    osteo: !!document.getElementById('char_osteo').checked,
+                    hbp: !!document.getElementById('char_hbp').checked,
+                    lowfit: !!document.getElementById('char_lowfit').checked,
+                    active: !!document.getElementById('char_active').checked
+                }
+            };
+            localStorage.setItem('bodyInfo', JSON.stringify(info));
+            // also persist selected end goal
+            const eg = localStorage.getItem('endGoal') || '';
+            if (eg) localStorage.setItem('endGoal', eg);
+            try { showSaveStatus(); } catch(e){}
+        }
+
+        function showSaveStatus() {
+            const el = document.getElementById('saveStatus');
+            if (!el) return;
+            el.style.display = 'inline-block';
+            clearTimeout(el._hideTimer);
+            el._hideTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+        }
+
+        function loadGoals() {
+            try {
+                const stored = JSON.parse(localStorage.getItem('myGoals') || '[]');
+                // populate the in-memory goals array (clear first to avoid duplicates)
+                goals.length = 0;
+                stored.forEach(g => { if (g && g.name) goals.push(g); });
+                renderGoals();
+            } catch (e) {}
+        }
+
+        function toggleGoals() {
+            const sec = document.getElementById('goalsSection');
+            const btn = document.getElementById('toggleGoalsBtn');
+            if (!sec) return;
+            if (sec.style.display === 'block') {
+                sec.style.display = 'none';
+                if (btn) btn.textContent = 'Add your own goal ✍️';
+            } else {
+                sec.style.display = 'block';
+                if (btn) btn.textContent = 'Close goals ✖️';
+                sec.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function loadBodyInfo() {
+            try {
+                const info = JSON.parse(localStorage.getItem('bodyInfo') || 'null');
+                if (!info) return;
+                if (info.age) document.getElementById('userAge').value = info.age;
+                if (info.height_ft !== undefined) document.getElementById('userHeightFt').value = info.height_ft;
+                if (info.height_in !== undefined) document.getElementById('userHeightIn').value = info.height_in;
+                if (info.weight_lbs !== undefined) document.getElementById('userWeightLbs').value = info.weight_lbs;
+                if (info.bodyType) document.getElementById('bodyType').value = info.bodyType;
+                if (info.chars) {
+                    document.getElementById('char_preg').checked = !!info.chars.preg;
+                    document.getElementById('char_post').checked = !!info.chars.post;
+                    document.getElementById('char_meno').checked = !!info.chars.meno;
+                    document.getElementById('char_pelvic').checked = !!info.chars.pelvic;
+                    document.getElementById('char_osteo').checked = !!info.chars.osteo;
+                    document.getElementById('char_hbp').checked = !!info.chars.hbp;
+                    document.getElementById('char_lowfit').checked = !!info.chars.lowfit;
+                    document.getElementById('char_active').checked = !!info.chars.active;
+                }
+                // load end goal display
+                const eg = localStorage.getItem('endGoal') || '';
+                if (eg) setEndGoal(eg);
+            } catch (e) {}
+        }
+
+        function showGoalsForm() {
+            document.getElementById('goalsSection').style.display = 'block';
+            // scroll into view
+            document.getElementById('goalsSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function renderGoals() {
+            const ul = document.getElementById('exerciseGoalsList');
+            ul.innerHTML = '';
+            goals.forEach((g, i) => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '6px';
+                li.textContent = `${g.name}${g.target ? ' — ' + g.target + ' min' : ''}`;
+                ul.appendChild(li);
+            });
+            // render persistent 'My Goals' section
+            const my = document.getElementById('myGoalsList');
+            if (my) {
+                my.innerHTML = '';
+                const stored = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                stored.forEach((g, idx) => {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.justifyContent = 'space-between';
+                    row.style.alignItems = 'center';
+                    row.style.padding = '8px 6px';
+                    row.style.borderBottom = '1px solid #f7edf2';
+                    const text = document.createElement('div');
+                    text.textContent = `${g.name}${g.target ? ' — ' + g.target + ' min' : ''}`;
+                    const del = document.createElement('button');
+                    del.className = 'sym-pill';
+                    del.style.padding = '6px 10px';
+                    del.style.background = '#fff';
+                    del.style.color = '#c62828';
+                    del.style.border = '1px solid #fde8ef';
+                    del.style.borderRadius = '999px';
+                    del.style.cursor = 'pointer';
+                    del.style.fontSize = '14px';
+                    del.title = 'Delete goal';
+                    del.setAttribute('aria-label','Delete goal');
+                    del.textContent = '✖';
+                    del.onclick = () => { removeGoal(idx); };
+                    row.appendChild(text);
+                    row.appendChild(del);
+                    my.appendChild(row);
+                });
+            }
+        }
+
+        function removeGoal(idx){
+            try{
+                const stored = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                if(idx>=0 && idx<stored.length){ stored.splice(idx,1); localStorage.setItem('myGoals', JSON.stringify(stored)); }
+                // refresh in-memory goals
+                goals.length = 0;
+                const newStored = JSON.parse(localStorage.getItem('myGoals')||'[]');
+                newStored.forEach(g=>{ if(g && g.name) goals.push(g); });
+                renderGoals();
+                showRecommendations();
+            }catch(e){console.error(e)}
+        }
+
+        
+
+        // end-goal helpers
+        function setEndGoal(goal) {
+            localStorage.setItem('endGoal', goal);
+            const map = {
+                'weight_loss': 'Lose weight 🔥',
+                'build_muscle': 'Build muscle 💪',
+                'endurance': 'Increase endurance ❤️‍🔥',
+                'flexibility': 'Flexibility 🧘‍♀️',
+                'general': 'General health ✨'
+            };
+            document.getElementById('selectedGoal').textContent = map[goal] || '';
+            // Automatically fetch and add suggested exercises for this end-goal
+            try { fetchAndAddSuggestedExercises(); } catch (e) { console.error('fetch suggested error', e); }
+        }
+
+        function quickActivity(type, minutes, auto=true) {
+            document.getElementById('activityType').value = type;
+            document.getElementById('activityMinutes').value = minutes;
+            if (auto) logActivity();
+        }
+
+        // Body type helper removed; users choose from inclusive select
+
+        function renderLogs() {
+            const el = document.getElementById('exerciseLogs');
+            el.innerHTML = '';
+            logs.forEach(l => {
+                const d = document.createElement('div');
+                d.style.padding = '12px';
+                d.style.borderBottom = '1px solid #f7edf2';
+                d.style.display = 'flex';
+                d.style.justifyContent = 'space-between';
+                d.style.alignItems = 'flex-start';
+
+                const left = document.createElement('div');
+                left.style.maxWidth = '70%';
+                const title = document.createElement('div');
+                title.innerHTML = `<strong style="color:#333">${l.type}</strong> — <span style="color:#666">${l.minutes} min</span>`;
+                left.appendChild(title);
+
+                if (l.symptoms && l.symptoms.length) {
+                    const pills = document.createElement('div');
+                    pills.style.marginTop = '8px';
+                    pills.style.display = 'flex';
+                    pills.style.flexWrap = 'wrap';
+                    pills.style.gap = '6px';
+                    l.symptoms.forEach(s => {
+                        const p = document.createElement('div');
+                        p.style.background = '#fff5f8';
+                        p.style.padding = '6px 8px';
+                        p.style.borderRadius = '999px';
+                        p.style.fontSize = '13px';
+                        p.style.color = '#c62828';
+                        p.textContent = `${s.key} ${s.icon || ''}`;
+                        pills.appendChild(p);
+                    });
+                    left.appendChild(pills);
+                }
+
+                const right = document.createElement('div');
+                right.style.textAlign = 'right';
+                right.style.fontSize = '12px';
+                right.style.color = '#666';
+                right.textContent = l.ts;
+
+                const del = document.createElement('button');
+                del.className = 'sym-pill';
+                del.style.padding = '6px 10px';
+                del.style.marginTop = '6px';
+                del.style.background = '#fff';
+                del.style.color = '#c62828';
+                del.style.border = '1px solid #fde8ef';
+                del.style.borderRadius = '999px';
+                del.style.cursor = 'pointer';
+                del.style.fontSize = '14px';
+                del.title = 'Delete log entry';
+                del.setAttribute('aria-label','Delete log entry');
+                del.textContent = '✖';
+                del.onclick = () => { deleteLog(logs.indexOf(l)); };
+                right.appendChild(document.createElement('br'));
+                right.appendChild(del);
+
+                d.appendChild(left);
+                d.appendChild(right);
+                el.appendChild(d);
+            });
+        }
+
+        function deleteLog(idx){
+            try{
+                if(idx>=0 && idx<logs.length){ logs.splice(idx,1); renderLogs(); }
+            }catch(e){console.error(e)}
+        }
+
+        function checkRedFlag(entry) {
+            // Deprecated: server-based assessment now used
+            return false;
+        }
+
+        function showRedFlag(flag, reasons) {
+            const redEl = document.getElementById('redFlag');
+            if (!flag) { redEl.style.display = 'none'; redEl.innerHTML = ''; return; }
+            redEl.style.display = 'block';
+            const list = (reasons || []).map(r => `<li style="margin-bottom:6px;">${r}</li>`).join('');
+            redEl.innerHTML = `<strong>Red flag:</strong> Concerning signs detected. <ul style="margin-top:8px; padding-left:18px; color:#611;">${list}</ul>`;
+        }
+
+        // Breathing exercise helpers
+        let breathInterval = null;
+        function showBreathingModal() {
+            const m = document.getElementById('breathingModal');
+            if (!m) return;
+            m.style.display = 'block';
+        }
+
+        function closeBreathing() {
+            const m = document.getElementById('breathingModal');
+            if (!m) return;
+            m.style.display = 'none';
+            if (breathInterval) { clearInterval(breathInterval); breathInterval = null; }
+            document.getElementById('breathText').textContent = 'Get ready...';
+        }
+
+        function startBreathing(inhale=4, hold=2, exhale=4) {
+            const text = document.getElementById('breathText');
+            if (!text) return;
+            let phase = 0; // 0 inhale,1 hold,2 exhale
+            let timer = inhale;
+            text.textContent = `Breathe in — ${timer}`;
+            if (breathInterval) clearInterval(breathInterval);
+            breathInterval = setInterval(() => {
+                timer -= 1;
+                if (timer <= 0) {
+                    phase = (phase + 1) % 3;
+                    if (phase === 0) timer = inhale;
+                    else if (phase === 1) timer = hold;
+                    else timer = exhale;
+                }
+                if (phase === 0) text.textContent = `Breathe in — ${timer}`;
+                else if (phase === 1) text.textContent = `Hold — ${timer}`;
+                else text.textContent = `Breathe out — ${timer}`;
+            }, 1000);
+        }
+
+        // Show a short breathing prompt and load saved data on app load
+        window.addEventListener('load', () => {
+            // clear persisted custom symptoms on page refresh per user request
+            try { localStorage.removeItem('customSymptoms'); } catch(e){}
+            // delay slightly so UI paints
+            setTimeout(showBreathingModal, 600);
+            // load custom symptoms and body info
+            try { renderCustomSymptoms(); } catch(e){}
+            try { loadBodyInfo(); } catch(e){}
+            try { loadGoals(); } catch(e){}
+            try { /* ensure customExercises exists */ if(!localStorage.getItem('customExercises')) localStorage.setItem('customExercises','[]'); } catch(e){}
+            try { renderCustomExercises(); } catch(e){}
+        });
+
+        function renderCustomExercises(){
+            const container = document.getElementById('customExercisesList');
+            if(!container) return;
+            container.innerHTML = '';
+            const stored = JSON.parse(localStorage.getItem('customExercises')||'[]');
+            stored.forEach((c, idx)=>{
+                const row = document.createElement('div');
+                row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.padding='8px 6px'; row.style.borderBottom='1px solid #f7edf2';
+                const left = document.createElement('div'); left.style.fontSize='14px';
+                const title = document.createElement('div'); title.style.fontWeight='600'; title.style.color='#333'; title.textContent = c.name || '';
+                const desc = document.createElement('div'); desc.style.fontSize='13px'; desc.style.color='#666'; desc.style.marginTop='4px'; desc.textContent = c.description || (c.targets? ('Targets: '+c.targets) : '');
+                left.appendChild(title); if(desc.textContent) left.appendChild(desc);
+                if(c.prescription){ const presNode = document.createElement('div'); presNode.style.fontSize='13px'; presNode.style.color='#444'; presNode.style.marginTop='6px'; presNode.textContent = formatPrescription(c.prescription); left.appendChild(presNode); }
+                if(c.suggested){
+                    const badge = document.createElement('div'); badge.style.display='inline-block'; badge.style.marginTop='6px'; badge.style.marginLeft='6px'; badge.style.padding='4px 8px'; badge.style.borderRadius='999px'; badge.style.background='#fff0f6'; badge.style.color='#c2185b'; badge.style.fontSize='12px'; badge.textContent='Suggested'; left.appendChild(badge);
+                }
+                const del = document.createElement('button'); del.className='sym-pill'; del.style.padding='6px 10px'; del.style.background='#fff'; del.style.color='#c62828'; del.style.border='1px solid #fde8ef'; del.style.borderRadius='999px'; del.style.cursor='pointer'; del.style.fontSize='14px'; del.title='Delete exercise'; del.setAttribute('aria-label','Delete exercise'); del.textContent='✖'; del.onclick = ()=>{ deleteCustomExercise(idx); };
+                row.appendChild(left); row.appendChild(del); container.appendChild(row);
+            });
+        }
+
+        // Merge recommended exercises (from server) into local customExercises storage
+        function mergeRecommendedIntoCustom(recs){
+            if(!recs || !recs.length) return;
+            try{
+                const stored = JSON.parse(localStorage.getItem('customExercises')||'[]');
+                const seen = new Set(stored.map(s=> (s.name||'').toLowerCase()));
+                recs.forEach(r=>{
+                    const name = (r.name||'').trim();
+                    if(!name) return;
+                    if(seen.has(name.toLowerCase())) return;
+                    stored.unshift({ id: r.id||('rec_'+Date.now()), name: r.name, description: r.description||'', targets: (Array.isArray(r.targets)? r.targets.join(', ') : (r.targets||'')), suggested: true, prescription: (r.prescription || r.pres || null) });
+                    seen.add(name.toLowerCase());
+                });
+                localStorage.setItem('customExercises', JSON.stringify(stored));
+                renderCustomExercises();
+            }catch(e){ console.error('mergeRecommendedIntoCustom', e); }
+        }
+
+        // Fetch recommendations from server and merge them into customExercises (used when end-goal is set)
+        async function fetchAndAddSuggestedExercises(){
+            try{
+                const body = JSON.parse(localStorage.getItem('bodyInfo')||'{}');
+                const payload = { age: Number(body.age)||null, height_cm: Number(body.height_cm)||null, weight_kg: Number(body.weight_kg)||null, bodyType: body.bodyType||'', chars: body.chars||{}, endGoal: localStorage.getItem('endGoal')||'', goals: JSON.parse(localStorage.getItem('myGoals')||'[]'), customExercises: JSON.parse(localStorage.getItem('customExercises')||'[]') };
+                const resp = await fetch('/api/fitness/llm_recommend',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+                const data = await resp.json();
+                if(data && data.status === 'success'){
+                    mergeRecommendedIntoCustom(data.recommendations || data.exercises || []);
+                    showRecommendations();
+                }
+            }catch(e){ console.error('fetchAndAddSuggestedExercises', e); }
+        }
+
+        // Generate a local tailored exercise recommendation based on name, targets and user body
+        function generateExerciseRecommendation(name, targetsStr, body){
+            const targets = (targetsStr||'').split(',').map(s=>s.trim()).filter(Boolean);
+            const lname = (name||'').trim();
+            const base = lname.charAt(0).toUpperCase() + lname.slice(1);
+            const descriptionParts = [];
+            if(targets.includes('cardio') || targets.includes('aerobic')) descriptionParts.push('Great for cardiovascular fitness; try intervals or sustained pace.');
+            if(targets.includes('lower') || targets.includes('legs')) descriptionParts.push('Emphasize controlled movement and progressive sets to build lower-body strength.');
+            if(targets.includes('upper') ) descriptionParts.push('Include upper-body progression or carries as complementary work.');
+            if(targets.includes('flexibility') || targets.includes('mobility')) descriptionParts.push('Add dynamic mobility and cool-down stretches focused on target joints.');
+            if(!descriptionParts.length) descriptionParts.push('Can be adapted for strength, cardio, or mobility depending on targets.');
+            // tailor small note for pregnancy/postpartum/osteo
+            if(body && body.chars){
+                if(body.chars.preg) descriptionParts.push('Use pregnancy-safe modifications and consult provider if unsure.');
+                if(body.chars.osteo) descriptionParts.push('Focus on controlled, load-managed strength progressions for bone health.');
+                if(body.chars.lowfit) descriptionParts.push('Start with shorter durations and lower intensity, progress gradually.');
+            }
+            const description = descriptionParts.join(' ');
+            const rationale = `Suggested because it matches targets: ${targets.join(', ')}`;
+            return { id: 'local_'+Date.now(), name: base, description, targets: targets, rationale };
+        }
+
+        function deleteCustomExercise(idx){ try{ const stored = JSON.parse(localStorage.getItem('customExercises')||'[]'); if(idx>=0 && idx<stored.length){ stored.splice(idx,1); localStorage.setItem('customExercises', JSON.stringify(stored)); renderCustomExercises(); showRecommendations(); } }catch(e){console.error(e)} }
+
     </script>
 </body>
 </html>
@@ -3057,6 +3790,427 @@ def diet_tracker():
 @app.route('/api/fitness/exercise', methods=['GET', 'POST'])
 def exercise_tracker():
     return {"status": "success", "message": "Exercise tracker endpoint"}
+
+
+#start
+@app.route('/api/fitness/exercises', methods=['GET'])
+def exercises_dataset():
+    """Return exercise recommendations dataset as JSON"""
+    import json, os, time
+    base = os.path.dirname(__file__)
+    data_path = os.path.join(base, '..', 'data', 'exercise_recommendations.json')
+    try:
+        with open(data_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return {"status": "success", "exercises": data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.route('/api/fitness/llm_recommend', methods=['POST'])
+def llm_recommend():
+    """Endpoint that can be used to request LLM-curated recommendations.
+    Currently returns heuristic recommendations; placeholder for integrating an LLM or external API.
+    """
+    data = None
+    try:
+        from flask import request
+        data = request.get_json() or {}
+    except Exception:
+        data = {}
+
+    # Basic heuristic fallback: reuse existing dataset filtering
+    import json, os
+    base = os.path.dirname(__file__)
+    data_path = os.path.join(base, '..', 'data', 'exercise_recommendations.json')
+    try:
+        with open(data_path, 'r', encoding='utf-8') as f:
+            exercises = json.load(f)
+    except Exception as e:
+        return {"status": "error", "message": f"dataset load error: {e}"}
+
+    # accept client-provided custom exercises and append as candidates
+    try:
+        custom_in = data.get('custom_exercises') or data.get('customExercises') or []
+        if custom_in and isinstance(custom_in, list):
+            def infer_type_from_text(txt):
+                t = (txt or '').lower()
+                if any(k in t for k in ['walk','run','jog','bike','cycle','cardio','ellipt']):
+                    return 'cardio'
+                if any(k in t for k in ['squat','deadlift','press','strength','resistance','band']):
+                    return 'strength'
+                if any(k in t for k in ['yoga','stretch','mobility','pilates']):
+                    return 'flexibility'
+                return 'general'
+
+            for i, c in enumerate(custom_in):
+                try:
+                    cid = c.get('id') if isinstance(c, dict) and c.get('id') else f'custom_{i}_{int(time.time())}'
+                    name = (c.get('name') or c.get('title') or '').strip()
+                    desc = c.get('description') if isinstance(c, dict) else ''
+                    targets_raw = c.get('targets') if isinstance(c, dict) else ''
+                    # normalize targets into list
+                    if isinstance(targets_raw, list):
+                        targets_list = targets_raw
+                    elif isinstance(targets_raw, str):
+                        targets_list = [t.strip() for t in targets_raw.split(',') if t.strip()]
+                    else:
+                        targets_list = []
+                    ex_entry = {
+                        'id': cid,
+                        'name': name or f'Custom Exercise {i+1}',
+                        'description': desc or '',
+                        'type': infer_type_from_text(' '.join(targets_list) + ' ' + (name or '')),
+                        'impact': 'low',
+                        'targets': targets_list,
+                        'recommended_for': []
+                    }
+                    exercises.append(ex_entry)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    # parse incoming data
+    age = int(data.get('age') or 0)
+    height_cm = float(data.get('height_cm') or 0)
+    weight_kg = float(data.get('weight_kg') or 0)
+    bodyType = (data.get('bodyType') or '').lower()
+    endGoal = (data.get('endGoal') or '').lower()
+    goals_list = data.get('goals') or []
+    chars = data.get('chars') or {}
+
+    # Normalize and de-duplicate incoming goals by name+target (case-insensitive)
+    try:
+        unique = []
+        seen = set()
+        for g in goals_list:
+            name = (g.get('name') or '').strip()
+            target = str(g.get('target') or '').strip()
+            if not name:
+                continue
+            # de-duplicate by goal name only (ignore minor target differences)
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append({'name': name, 'target': target})
+        goals_list = unique
+    except Exception:
+        pass
+
+    bmi = None
+    try:
+        if height_cm and weight_kg:
+            bmi = weight_kg / ((height_cm/100.0)**2)
+    except Exception:
+        bmi = None
+
+    candidates = []
+    for e in exercises:
+        # filter by age suitability
+        if age and (age < e.get('suitable_age_min', 0) or age > e.get('suitable_age_max', 999)):
+            continue
+        candidates.append(e)
+
+    def score_ex(e):
+        s = 0
+        etype = (e.get('type') or '').lower()
+        # normalize targets to a string for matching
+        raw_targets = e.get('targets') or []
+        if isinstance(raw_targets, list):
+            targets = ' '.join([str(t) for t in raw_targets]).lower()
+        else:
+            targets = str(raw_targets).lower()
+        impact = (e.get('impact') or '').lower()
+
+        # bodyType match (stronger boost)
+        rec_for = [r.lower() for r in (e.get('recommended_for') or [])]
+        if bodyType and bodyType in rec_for:
+            s += 4
+
+        # endGoal boosts
+        if endGoal == 'weight_loss':
+            if 'cardio' in etype or 'cardio' in targets: s += 4
+            if impact and 'low' in impact: s += 1
+        if endGoal == 'build_muscle':
+            if 'strength' in etype or 'strength' in targets or 'resistance' in targets: s += 5
+        if endGoal == 'endurance' and 'cardio' in etype: s += 3
+        if endGoal == 'flexibility' and ('flexibility' in etype or 'mobility' in targets): s += 4
+        if endGoal == 'general': s += 1
+
+        # typed goals (from user-added goals)
+        for g in goals_list:
+            gtxt = (g.get('name') or '').lower()
+            if not gtxt: continue
+            # match against targets and name
+            if any(tok in targets for tok in gtxt.split()): s += 2
+            if any(tok in (e.get('name') or '').lower() for tok in gtxt.split()): s += 2
+
+        # BMI considerations
+        try:
+            if bmi and bmi >= 30 and impact and 'low' in impact: s += 2
+        except Exception:
+            pass
+
+        # characteristics
+        if chars.get('pelvic') and e.get('id') == 'pelvic_floor_exercises': s += 6
+        if chars.get('preg') and e.get('id') == 'pelvic_floor_exercises': s += 5
+        if chars.get('post') and e.get('id') == 'pelvic_floor_exercises': s += 4
+        if chars.get('osteo') and ('strength' in etype or 'resistance' in etype or 'weight' in targets): s += 3
+        if chars.get('hbp'):
+            # de-prioritize high-impact cardio
+            if 'cardio' in etype and impact and 'high' in impact: s -= 3
+        if chars.get('lowfit'):
+            if impact and 'high' in impact: s -= 2
+            if impact and 'low' in impact: s += 1
+
+        # body shape specific boosts
+        if bodyType in ['pear','curvy'] and 'lower' in targets: s += 2
+        if bodyType in ['apple'] and 'upper' in targets: s += 2
+
+        # age-based adjustments
+        if age and age >= 65:
+            if impact and 'low' in impact: s += 2
+            if 'strength' in etype: s += 2
+
+        return s
+
+    # helper to create a prescription for an exercise based on profile
+    def make_prescription(e):
+        etype = (e.get('type') or '').lower()
+        impact = (e.get('impact') or '').lower()
+        targets = e.get('targets') or []
+        pres = {}
+        # defaults
+        if 'strength' in etype or any('strength' in str(t).lower() for t in targets):
+            pres['sets'] = 3
+            pres['reps'] = '8-12'
+            pres['frequency_per_week'] = 2 if age and age>=65 else 3
+            pres['intensity'] = 'moderate'
+        elif 'cardio' in etype or any(t in ['cardio','aerobic'] for t in [str(x).lower() for x in targets]):
+            pres['duration_min'] = 30
+            pres['frequency_per_week'] = 3
+            pres['intensity'] = 'moderate'
+        elif 'flexibility' in etype or 'mobility' in etype or any('flex' in str(t).lower() for t in targets):
+            pres['duration_min'] = 15
+            pres['frequency_per_week'] = 3
+            pres['intensity'] = 'low'
+        else:
+            pres['duration_min'] = 20
+            pres['frequency_per_week'] = 2
+            pres['intensity'] = 'moderate'
+
+        # adjust for low fitness
+        try:
+            if chars.get('lowfit'):
+                if 'sets' in pres:
+                    pres['sets'] = max(1, pres['sets'] - 1)
+                if 'reps' in pres:
+                    # lower rep range
+                    pres['reps'] = '6-10'
+                if 'duration_min' in pres:
+                    pres['duration_min'] = max(10, int(pres['duration_min']*0.6))
+                pres['intensity'] = 'low'
+        except Exception:
+            pass
+
+        # adjust for older age
+        try:
+            if age and age >= 65:
+                if 'sets' in pres:
+                    pres['sets'] = max(1, pres['sets'] - 1)
+                if 'duration_min' in pres:
+                    pres['duration_min'] = max(8, int(pres['duration_min']*0.75))
+                pres['frequency_per_week'] = max(1, pres.get('frequency_per_week',2) - 1)
+                pres['intensity'] = 'low'
+        except Exception:
+            pass
+
+        # consider BMI and impact
+        try:
+            if bmi and bmi >= 30 and impact and 'high' in impact:
+                # reduce impact and duration
+                if 'duration_min' in pres:
+                    pres['duration_min'] = max(10, int(pres['duration_min']*0.7))
+                pres['intensity'] = 'low'
+        except Exception:
+            pass
+
+        return pres
+
+    scored = sorted(candidates, key=score_ex, reverse=True)
+    # return top 6 recommendations (trim internal fields)
+    top = []
+    for ex in scored[:6]:
+        # build a short rationale for why this exercise was recommended
+        reasons = []
+        if bodyType and bodyType in [r.lower() for r in (ex.get('recommended_for') or [])]:
+            reasons.append('Matches suggested body type considerations.')
+        if endGoal and ((endGoal == 'weight_loss' and ('cardio' in (ex.get('type') or '').lower())) or (endGoal == 'build_muscle' and ('strength' in (ex.get('type') or '').lower()))):
+            reasons.append(f'Aligned with goal: {endGoal.replace("_"," ")}.')
+        if chars.get('pelvic') and ex.get('id') == 'pelvic_floor_exercises':
+            reasons.append('Recommended for pelvic floor support.')
+        if chars.get('preg') and ex.get('id') == 'pelvic_floor_exercises':
+            reasons.append('Safe option for pregnancy/postpartum adaptations.')
+        if bmi and bmi >= 30 and (ex.get('impact') or '').lower().startswith('low'):
+            reasons.append('Low-impact choice suitable for higher BMI.')
+
+        pres = make_prescription(ex)
+        top.append({
+            'id': ex.get('id'), 'name': ex.get('name'), 'type': ex.get('type'),
+            'impact': ex.get('impact'), 'targets': ex.get('targets'), 'description': ex.get('description'),
+            'rationale': ' '.join(reasons), 'prescription': pres
+        })
+    # build a simple actionable plan when user provided goals
+    plan = []
+    try:
+        if goals_list:
+            for g in goals_list:
+                gname = (g.get('name') or '').strip()
+                if not gname: continue
+                # pick top matching exercises for this goal
+                tokens = [t.lower() for t in gname.split()]
+                matches = []
+                for e in scored:
+                    text = ' '.join([e.get('name',''), ' '.join(e.get('targets') or [])]).lower()
+                    if any(tok in text for tok in tokens):
+                        matches.append(e)
+                if not matches:
+                    matches = scored
+                ex_objs = []
+                for m in matches[:3]:
+                    if not m: continue
+                    try:
+                        pres = make_prescription(m)
+                    except Exception:
+                        pres = {}
+                    ex_name = m.get('name')
+                    if ex_name:
+                        ex_objs.append({'name': ex_name, 'prescription': pres})
+                # ensure unique by name
+                seen_ex = set()
+                uniq_ex_objs = []
+                for o in ex_objs:
+                    n = o.get('name') if isinstance(o, dict) else o
+                    if not n: continue
+                    if n in seen_ex: continue
+                    seen_ex.add(n)
+                    uniq_ex_objs.append(o)
+                ex_objs = uniq_ex_objs
+                # heuristic schedule (personalized)
+                schedule = '3x/week, 20-40 min per session'
+                g_lower = gname.lower()
+                if 'run' in g_lower or 'cardio' in g_lower:
+                    schedule = '3x/week run or brisk walk, 20-30 min'
+                if 'strength' in g_lower or 'muscle' in g_lower:
+                    schedule = '2-3x/week strength sessions, 20-40 min'
+                # adapt for low fitness or older age
+                try:
+                    if chars.get('lowfit'):
+                        schedule = schedule.replace('20-40','10-20').replace('20-30','10-20')
+                    if age and age >= 65:
+                        # reduce intensity and duration for older adults
+                        schedule = schedule.replace('3x/week','2x/week').replace('2-3x/week','2x/week').replace('20-40','10-25').replace('20-30','10-20')
+                except Exception:
+                    pass
+                rationale = f"Plan supports goal '{gname}' by prioritizing these exercises based on your profile."
+                plan.append({'goal': gname, 'schedule': schedule, 'exercises': ex_objs, 'rationale': rationale})
+    except Exception:
+        plan = []
+
+    return {"status": "success", "recommendations": top, "plan": plan}
+
+
+@app.route('/api/fitness/assess_activity', methods=['POST'])
+def assess_activity():
+    """Assess a logged activity for potential red flags.
+    Expects JSON: { type, minutes, symptoms, ts }
+    Returns: { flag: bool, reasons: [str] }
+    """
+    try:
+        from flask import request
+        payload = request.get_json() or {}
+    except Exception:
+        payload = {}
+
+    typ = (payload.get('type') or '').lower()
+    minutes = int(payload.get('minutes') or 0)
+    symptoms = payload.get('symptoms') or []
+    ts = payload.get('ts') or ''
+
+    reasons = []
+    flag = False
+
+    # normalize symptom keys
+    keys = [ (s.get('key') or '').lower() for s in symptoms ]
+
+    # immediate high-priority symptoms
+    high = ['chest pain', 'shortness of breath', 'shortness of breath', 'fainting / near-faint', 'severe pain']
+    for h in high:
+        if h in keys:
+            flag = True
+            reasons.append(f'Presence of high-priority symptom: {h}. Seek immediate medical evaluation.')
+
+    # activity-symptom interaction
+    if symptoms and typ in ['run','sprint','interval','hiit'] and minutes >= 15:
+        flag = True
+        reasons.append('High-intensity activity with symptoms — stop activity and evaluate.')
+
+    if symptoms and typ in ['strength','weightlifting'] and minutes >= 20:
+        flag = True
+        reasons.append('Strenuous resistance activity combined with symptoms — consider resting and seeking care if symptoms persist.')
+
+    # long-duration with symptoms
+    if symptoms and minutes >= 60:
+        flag = True
+        reasons.append('Long duration exercise with symptoms — may indicate overexertion or dehydration.')
+
+    # also flag (or warn) based on activity type and duration even without symptoms
+    if not symptoms:
+        if typ in ['run','cycling','bike'] and minutes >= 120:
+            flag = True
+            reasons.append('Very long-duration cardio session — elevated risk of dehydration/overuse; monitor closely.')
+        if typ in ['hiit','interval','sprint'] and minutes >= 45:
+            flag = True
+            reasons.append('Extended high-intensity session — ensure adequate recovery and stop if you feel unwell.')
+        if minutes >= 180:
+            flag = True
+            reasons.append('Extremely long exercise duration — consider medical guidance for very long sessions.')
+
+    # time-of-day heuristic: unusual late-night/early-morning activity with symptoms
+    try:
+        import dateutil.parser as dp
+        dt = None
+        try:
+            dt = dp.parse(ts)
+        except Exception:
+            dt = None
+        if dt:
+            if dt.hour >= 0 and dt.hour <= 5 and symptoms:
+                flag = True
+                reasons.append('Activity logged at late/early hours while symptomatic — consider seeking immediate care if severe.')
+    except Exception:
+        # dateutil may not exist; skip deep time parsing
+        pass
+
+    # default informational reasons when not flagged but symptoms present
+    if not flag and symptoms:
+        reasons.append('Mild symptoms noted — monitor symptoms and rest if needed.')
+
+    return { 'flag': bool(flag), 'reasons': reasons }
+
+@app.route('/exercise', methods=['GET'])
+def exercise_page():
+    """Serve the consolidated standalone exercise HTML file.
+    All exercise UI, CSS and JS are in `front/exercise.html`.
+    """
+    try:
+        return render_template('front/exercise.html')
+    except Exception:
+        # fallback: simple JSON response if file missing
+        return {"status": "error", "message": "Exercise page not found"}, 500
+
 
 # @app.route('/api/chatbot', methods=['POST'])
 # def chatbot():
@@ -3200,7 +4354,7 @@ def search_providers():
             }), 404
         
         lat, lon = coords
-        print(f"📍 Coordinates: {lat}, {lon}")
+        print(f"Coordinates: {lat}, {lon}")
         
         providers = provider_searcher.search_providers_overpass(lat, lon, radius_km=25)
         
