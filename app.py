@@ -1520,7 +1520,7 @@ HTML_TEMPLATE = """
             <!-- home  -->
             <section id="home" class="section active">
                 <div class="hero">
-                    <h2 class="hero-title">Welcome to Pomegranate </h2>
+                    <h2 class="hero-title">Welcome to Pomegranate 👩‍⚕️</h2>
                     <p class="hero-subtitle">
                         96% of scientific knowledge, drug testing, and treatment guidelines are based on male biology.
                     </p>
