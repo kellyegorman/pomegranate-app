@@ -1753,10 +1753,111 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div id="fitness-exercise" class="tab-content">
-                    <h3 style="color: #ff9dbf; margin-bottom: 20px;">Workout Log</h3>
-                    <p style="color: #666; margin-bottom: 20px;">Record your exercises and track your fitness progress.</p>
-                    <div class="placeholder">
-                        <p class="placeholder-text">Exercise tracker interface coming soon</p>
+                    <h3 style="color: #ff9dbf; margin-bottom: 20px;">Exercise & Workout Tracker</h3>
+                    <p style="color: #666; margin-bottom: 20px;">Track your fitness goals, log activities, and monitor your progress.</p>
+                    
+                    <!-- Personal Summary Dashboard -->
+                    <div id="personalSummary" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 2px solid #bae6fd; display: none;">
+                        <h4 style="color: #0284c7; margin-bottom: 15px;">📊 Your Profile Summary</h4>
+                        <div id="summaryContent" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                            <!-- Summary will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- My Goals Display -->
+                    <div id="myGoalsDisplay" style="background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 2px solid #fdba74; display: none;">
+                        <h4 style="color: #ea580c; margin-bottom: 15px;">🎯 My Active Goals</h4>
+                        <div id="goalsDisplayList" style="display: grid; gap: 10px;">
+                            <!-- Goals will be displayed here -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Activities Display -->
+                    <div id="recentActivitiesDisplay" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 2px solid #86efac; display: none;">
+                        <h4 style="color: #16a34a; margin-bottom: 15px;">💪 Recent Workouts</h4>
+                        <div id="activitiesDisplayList" style="display: grid; gap: 10px;">
+                            <!-- Recent activities will be displayed here -->
+                        </div>
+                    </div>
+
+                    <!-- Body Info Section -->
+                    <div style="background: linear-gradient(135deg, #fff0f5 0%, #ffe5ee 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 2px solid #ffd6e8;">
+                        <h4 style="color: #ff9dbf; margin-bottom: 15px;">👤 Body Information</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Age</label>
+                                <input type="number" id="age" placeholder="Enter age" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Height (cm)</label>
+                                <input type="number" id="height_cm" placeholder="Enter height" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Weight (kg)</label>
+                                <input type="number" id="weight_kg" placeholder="Enter weight" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Body Type</label>
+                                <select id="bodyType" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                    <option value="">Select...</option>
+                                    <option value="ectomorph">Ectomorph (Lean)</option>
+                                    <option value="mesomorph">Mesomorph (Athletic)</option>
+                                    <option value="endomorph">Endomorph (Curvy)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button onclick="saveBodyInfo()" style="margin-top: 15px; background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; padding: 10px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Save Info</button>
+                    </div>
+
+                    <!-- Fitness Goals -->
+                    <div style="background: white; padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #e0e0e0;">
+                        <h4 style="color: #ff9dbf; margin-bottom: 15px;">Set Fitness Goals</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end;">
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Goal Name</label>
+                                <input type="text" id="goalName" placeholder="e.g., Build strength" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Target (optional)</label>
+                                <input type="text" id="goalTarget" placeholder="e.g., 3x per week" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <button onclick="addGoal()" style="background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; padding: 10px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">Add Goal</button>
+                        </div>
+                        <div id="myGoalsList" style="margin-top: 20px;">
+                            <!-- Goals will appear here -->
+                        </div>
+                    </div>
+
+                    <!-- Activity Logging -->
+                    <div style="background: white; padding: 25px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #e0e0e0;">
+                        <h4 style="color: #ff9dbf; margin-bottom: 15px;">Log Activity</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Activity Type</label>
+                                <input type="text" id="activityType" placeholder="e.g., Running" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Duration (minutes)</label>
+                                <input type="number" id="activityDuration" placeholder="30" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; color: #666; margin-bottom: 5px; font-size: 14px;">Intensity</label>
+                                <select id="activityIntensity" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                    <option value="light">Light</option>
+                                    <option value="moderate">Moderate</option>
+                                    <option value="vigorous">Vigorous</option>
+                                </select>
+                            </div>
+                            <button onclick="logActivity()" style="background: linear-gradient(135deg, #ffb3d9 0%, #ff9dbf 100%); color: white; padding: 10px 25px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">Log Activity</button>
+                        </div>
+                        <div id="activityLog" style="margin-top: 20px;">
+                            <!-- Activity logs will appear here -->
+                        </div>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div id="recommendations" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 25px; border-radius: 12px; border: 1px solid #bae6fd; margin-top: 25px; display: none;">
+                        <!-- Exercise recommendations will appear here -->
                     </div>
                 </div>
 
@@ -2254,6 +2355,7 @@ HTML_TEMPLATE = """
                                 data.recommendations.map(t=>`<li style="margin-bottom:12px;"><strong>${t.name}</strong> — ${t.description}<div style="color:#666; margin-top:6px; font-size:13px;">${t.rationale||''}</div></li>`).join('') + '</ul>';
                         }
                         recEl.innerHTML = html;
+                        recEl.style.display = 'block';
                         try { mergeRecommendedIntoCustom(data.recommendations || data.exercises || []); } catch(e){ console.error('merge recommended', e); }
                     }
                 } catch(e) { console.error('Goal planning error', e); }
@@ -2263,60 +2365,70 @@ HTML_TEMPLATE = """
         
         function logActivity() {
             const type = document.getElementById('activityType').value.trim();
-            const minutes = document.getElementById('activityMinutes').value.trim();
+            const duration = document.getElementById('activityDuration').value.trim();
+            const intensity = document.getElementById('activityIntensity').value;
 
-            if (!type || !minutes) return;
+            if (!type || !duration) {
+                alert('Please enter activity type and duration');
+                return;
+            }
 
-            // collect built-in symptoms
-            const symptoms = [];
-            const built = [
-                ['sym_chest','Chest pain','💓'],
-                ['sym_breath','Shortness of breath','😮‍💨'],
-                ['sym_nausea','Nausea','🤢'],
-                ['sym_dizzy','Dizziness','💫'],
-                ['sym_faint','Fainting / near-faint','⚠️'],
-                ['sym_severe','Severe pain','🩸'],
-                ['sym_joint','Joint pain','🦴'],
-                ['sym_fatigue','Excessive fatigue','😴']
-            ];
-            built.forEach(s => { try{ if(document.getElementById(s[0]).checked) symptoms.push({key:s[1], icon:s[2]}); }catch(e){} });
-
-            // collect custom symptoms (added by user)
-            const customChecks = document.querySelectorAll('.custom-sym');
-            customChecks.forEach(cb => {
-                try {
-                    if (cb.checked) {
-                        const label = cb.dataset.label || cb.id || 'Other';
-                        symptoms.push({ key: label, icon: '🔸' });
-                    }
-                } catch (e) {}
-            });
-
-            const entry = { type, minutes: Number(minutes), symptoms, ts: new Date().toLocaleString() };
+            const entry = { 
+                type, 
+                duration: Number(duration), 
+                intensity,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString()
+            };
+            
+            // Save to localStorage
+            const logs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
             logs.unshift(entry);
+            localStorage.setItem('activityLogs', JSON.stringify(logs));
+            
+            // Clear inputs
             document.getElementById('activityType').value = '';
-            document.getElementById('activityMinutes').value = '';
-            // reset built-in symptom checkboxes
-            built.forEach(s => { try{ document.getElementById(s[0]).checked = false; }catch(e){} });
-            // reset custom symptom checkboxes
-            customChecks.forEach(cb => { try{ cb.checked = false; }catch(e){} });
-            renderLogs();
+            document.getElementById('activityDuration').value = '';
+            document.getElementById('activityIntensity').value = 'moderate';
+            
+            renderActivityLogs();
+            updateActivitiesDisplay();
+            alert('Activity logged successfully!');
+        }
 
-            // Send activity to backend for assessment (considers symptoms, activity, time)
-            try {
-                fetch('/api/fitness/assess_activity', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(entry)
-                }).then(r => r.json()).then(resp => {
-                    if (resp && resp.flag) {
-                        showRedFlag(true, resp.reasons || []);
-                    } else {
-                        showRedFlag(false, []);
-                    }
-                }).catch(e => {
-                    console.error('Flagging error', e);
-                });
-            } catch (e) { console.error(e); }
+        function renderActivityLogs() {
+            const container = document.getElementById('activityLog');
+            const logs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+            
+            if (logs.length === 0) {
+                container.innerHTML = '<p style="color: #999; font-style: italic;">No activities logged yet</p>';
+                return;
+            }
+            
+            container.innerHTML = '<div style="display: grid; gap: 10px;">' +
+                logs.slice(0, 10).map((log, i) => `
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; border-left: 4px solid #ffb3d9;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <strong style="color: #ff9dbf; font-size: 16px;">${log.type}</strong>
+                                <div style="color: #666; margin-top: 5px;">
+                                    <span style="margin-right: 15px;">⏱️ ${log.duration} minutes</span>
+                                    <span>💪 ${log.intensity}</span>
+                                </div>
+                                <div style="color: #999; font-size: 13px; margin-top: 5px;">${log.date} at ${log.time}</div>
+                            </div>
+                            <button onclick="deleteActivityLog(${i})" style="background: #fff; color: #c62828; border: 1px solid #fde8ef; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px;">Delete</button>
+                        </div>
+                    </div>
+                `).join('') +
+            '</div>';
+        }
+
+        function deleteActivityLog(index) {
+            const logs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+            logs.splice(index, 1);
+            localStorage.setItem('activityLogs', JSON.stringify(logs));
+            renderActivityLogs();
         }
 
 
@@ -2600,6 +2712,24 @@ HTML_TEMPLATE = """
         // Initialize nutrition section when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initializeNutritionSection();
+            
+            // Load saved body info
+            const bodyInfo = JSON.parse(localStorage.getItem('bodyInfo') || '{}');
+            if (bodyInfo.age) document.getElementById('age').value = bodyInfo.age;
+            if (bodyInfo.height_cm) document.getElementById('height_cm').value = bodyInfo.height_cm;
+            if (bodyInfo.weight_kg) document.getElementById('weight_kg').value = bodyInfo.weight_kg;
+            if (bodyInfo.bodyType) document.getElementById('bodyType').value = bodyInfo.bodyType;
+            
+            // Update all display sections
+            updatePersonalSummary();
+            updateGoalsDisplay();
+            updateActivitiesDisplay();
+            
+            // Load activity logs
+            renderActivityLogs();
+            
+            // Load goals
+            renderGoals();
             
             // Listen for life phase changes to reload appropriate symptoms
             const lifePhaseSelect = document.getElementById('lifePhaseSelect');
@@ -3454,35 +3584,119 @@ window.addEventListener('click', event => {
         function saveEndGoalCustom(){ const v=(document.getElementById('endGoalInput').value||'').trim(); if(!v) return; localStorage.setItem('endGoal', v); document.getElementById('selectedGoal').textContent = v; hideEndGoalForm(); showSaveStatus(); }
 
         function saveBodyInfo() {
-            const ft = Number(document.getElementById('userHeightFt').value || 0);
-            const inch = Number(document.getElementById('userHeightIn').value || 0);
-            const lbs = Number(document.getElementById('userWeightLbs').value || 0);
-            const height_cm = ft*30.48 + inch*2.54;
-            const weight_kg = lbs * 0.45359237;
+            const age = document.getElementById('age').value || '';
+            const height_cm = Number(document.getElementById('height_cm').value || 0);
+            const weight_kg = Number(document.getElementById('weight_kg').value || 0);
+            const bodyType = document.getElementById('bodyType').value || '';
+            
             const info = {
-                age: document.getElementById('userAge').value || '',
-                height_ft: ft || '',
-                height_in: inch || '',
-                weight_lbs: lbs || '',
-                height_cm: Math.round(height_cm*10)/10,
-                weight_kg: Math.round(weight_kg*10)/10,
-                bodyType: document.getElementById('bodyType').value || '',
-                chars: {
-                    preg: !!document.getElementById('char_preg').checked,
-                    post: !!document.getElementById('char_post').checked,
-                    meno: !!document.getElementById('char_meno').checked,
-                    pelvic: !!document.getElementById('char_pelvic').checked,
-                    osteo: !!document.getElementById('char_osteo').checked,
-                    hbp: !!document.getElementById('char_hbp').checked,
-                    lowfit: !!document.getElementById('char_lowfit').checked,
-                    active: !!document.getElementById('char_active').checked
-                }
+                age: age,
+                height_cm: height_cm,
+                weight_kg: weight_kg,
+                bodyType: bodyType,
+                chars: {}
             };
             localStorage.setItem('bodyInfo', JSON.stringify(info));
+            alert('Body information saved!');
+            
+            // Update the summary display
+            updatePersonalSummary();
+            
             // also persist selected end goal
             const eg = localStorage.getItem('endGoal') || '';
             if (eg) localStorage.setItem('endGoal', eg);
             try { showSaveStatus(); } catch(e){}
+        }
+
+        function updatePersonalSummary() {
+            const bodyInfo = JSON.parse(localStorage.getItem('bodyInfo') || '{}');
+            const summaryDiv = document.getElementById('personalSummary');
+            const summaryContent = document.getElementById('summaryContent');
+            
+            if (!bodyInfo.age && !bodyInfo.height_cm && !bodyInfo.weight_kg) {
+                summaryDiv.style.display = 'none';
+                return;
+            }
+            
+            summaryDiv.style.display = 'block';
+            
+            let html = '';
+            if (bodyInfo.age) {
+                html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.age}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">years old</div>
+                </div>`;
+            }
+            if (bodyInfo.height_cm) {
+                html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.height_cm}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">cm tall</div>
+                </div>`;
+            }
+            if (bodyInfo.weight_kg) {
+                html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #0284c7;">${bodyInfo.weight_kg}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">kg</div>
+                </div>`;
+            }
+            if (bodyInfo.bodyType) {
+                const bodyTypeLabel = bodyInfo.bodyType.charAt(0).toUpperCase() + bodyInfo.bodyType.slice(1);
+                html += `<div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 18px; font-weight: bold; color: #0284c7;">${bodyTypeLabel}</div>
+                    <div style="color: #666; font-size: 13px; margin-top: 5px;">body type</div>
+                </div>`;
+            }
+            
+            summaryContent.innerHTML = html;
+        }
+
+        function updateGoalsDisplay() {
+            const goalsDiv = document.getElementById('myGoalsDisplay');
+            const goalsList = document.getElementById('goalsDisplayList');
+            const goals = JSON.parse(localStorage.getItem('myGoals') || '[]');
+            
+            if (goals.length === 0) {
+                goalsDiv.style.display = 'none';
+                return;
+            }
+            
+            goalsDiv.style.display = 'block';
+            goalsList.innerHTML = goals.map((goal, i) => `
+                <div style="background: white; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 600; color: #333; font-size: 16px;">${goal.name}</div>
+                        ${goal.target ? `<div style="color: #666; font-size: 14px; margin-top: 5px;">Target: ${goal.target}</div>` : ''}
+                    </div>
+                    <span style="font-size: 24px;">🎯</span>
+                </div>
+            `).join('');
+        }
+
+        function updateActivitiesDisplay() {
+            const activitiesDiv = document.getElementById('recentActivitiesDisplay');
+            const activitiesList = document.getElementById('activitiesDisplayList');
+            const activities = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+            
+            if (activities.length === 0) {
+                activitiesDiv.style.display = 'none';
+                return;
+            }
+            
+            activitiesDiv.style.display = 'block';
+            const recentActivities = activities.slice(0, 5);
+            
+            activitiesList.innerHTML = recentActivities.map(activity => `
+                <div style="background: white; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #333; font-size: 16px;">${activity.type}</div>
+                        <div style="color: #666; font-size: 14px; margin-top: 5px;">
+                            ${activity.duration} minutes • ${activity.intensity}
+                        </div>
+                        <div style="color: #999; font-size: 12px; margin-top: 5px;">${activity.date}</div>
+                    </div>
+                    <span style="font-size: 24px;">💪</span>
+                </div>
+            `).join('');
         }
 
         function showSaveStatus() {
@@ -3589,6 +3803,9 @@ window.addEventListener('click', event => {
                     my.appendChild(row);
                 });
             }
+            
+            // Update the goals display section
+            updateGoalsDisplay();
         }
 
         function removeGoal(idx){
@@ -3923,7 +4140,7 @@ def llm_recommend():
     # Basic heuristic fallback: reuse existing dataset filtering
     import json, os
     base = os.path.dirname(__file__)
-    data_path = os.path.join(base, '..', 'data', 'exercise_recommendations.json')
+    data_path = os.path.join(base, 'data', 'exercise_recommendations.json')
     try:
         with open(data_path, 'r', encoding='utf-8') as f:
             exercises = json.load(f)
